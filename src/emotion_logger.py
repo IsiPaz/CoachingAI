@@ -56,6 +56,7 @@ class EmotionLogger:
     def print_debug_info(self, 
                         face_bbox: Optional[np.ndarray], 
                         emotion_info: Optional[Dict],
+                        iris_info: Optional[Dict],
                         device: str) -> None:
         """
         Print detailed debug information to console.
@@ -110,6 +111,28 @@ class EmotionLogger:
         print(f"Valence: {valence:+.3f} ({'Positive' if valence > 0 else 'Negative' if valence < 0 else 'Neutral'})")
         print(f"Arousal:  {arousal:+.3f} ({'High' if arousal > 0 else 'Low' if arousal < 0 else 'Neutral'})")
         
+        # Iris and Eye Tracking Analysis
+        if iris_info is not None:
+            print(f"\nIRIS AND EYE TRACKING ANALYSIS:")
+            print(f"Left Eye Aspect Ratio: {iris_info['left_ear']:.3f}")
+            print(f"Right Eye Aspect Ratio: {iris_info['right_ear']:.3f}")
+            print(f"Average EAR: {iris_info['average_ear']:.3f}")
+            print(f"Currently Blinking: {'Yes' if iris_info['is_blinking'] else 'No'}")
+            print(f"Total Blinks: {iris_info['total_blinks']}")
+            
+            print(f"\nGAZE ANALYSIS:")
+            print(f"Horizontal Gaze: {iris_info['horizontal_gaze']:+.3f} ({'Right' if iris_info['horizontal_gaze'] > 0 else 'Left' if iris_info['horizontal_gaze'] < 0 else 'Center'})")
+            print(f"Vertical Gaze: {iris_info['vertical_gaze']:+.3f} ({'Up' if iris_info['vertical_gaze'] < 0 else 'Down' if iris_info['vertical_gaze'] > 0 else 'Center'})")
+            print(f"Gaze Magnitude: {iris_info['gaze_magnitude']:.3f}")
+            print(f"Looking at Camera: {'Yes' if iris_info['is_looking_at_camera'] else 'No'}")
+            
+            fatigue = iris_info['fatigue_metrics']
+            print(f"\nFATIGUE ANALYSIS:")
+            print(f"Blink Rate: {fatigue['blink_rate']:.1f} blinks/min")
+            print(f"Attention Score: {fatigue['attention_score']:.2f}")
+            print(f"Fatigue Level: {fatigue['fatigue_level']:.2f} ({fatigue['fatigue_level']*100:.0f}%)")
+            print(f"Drowsiness Alert: {'YES - DRIVER ALERT!' if fatigue['drowsiness_alert'] else 'No'}")
+
         # Emotional quadrant
         quadrant = self._get_emotional_quadrant(valence, arousal)
         print(f"Emotional quadrant: {quadrant}")

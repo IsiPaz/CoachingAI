@@ -7,6 +7,7 @@ from typing import Optional, Tuple, Callable
 
 from emonet_handler import EmoNetHandler
 from emotion_logger import EmotionLogger
+from iris_handler import IrisHandler  # NEW IMPORT
 
 
 class VideoStream:
@@ -33,6 +34,9 @@ class VideoStream:
         self.camera_id = camera_id
         self.target_fps = target_fps
         self.frame_time = 1.0 / target_fps
+        
+        # Initialize iris handler with same device as emonet  # NEW
+        self.iris_handler = IrisHandler(device=emonet_handler.device)  # NEW
         
         # Thread-safe queues for frame processing
         self.frame_queue = queue.Queue(maxsize=2)
@@ -72,9 +76,16 @@ class VideoStream:
                 # Process frame for emotion recognition
                 face_bbox, emotion_info = self.emonet_handler.process_frame(frame_bgr)
                 
-                # Put result in queue
+                # Process iris tracking (NEW SECTION)
+                iris_info = None
+                if face_bbox is not None:
+                    # Convert to RGB for MediaPipe
+                    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                    iris_info = self.iris_handler.process_frame(frame_rgb)
+                
+                # Put result in queue (MODIFIED to include iris_info)
                 if not self.result_queue.full():
-                    self.result_queue.put((frame_bgr, face_bbox, emotion_info))
+                    self.result_queue.put((frame_bgr, face_bbox, emotion_info, iris_info))
                     
             except queue.Empty:
                 continue
@@ -121,18 +132,24 @@ class VideoStream:
                 display_frame = frame
                 face_bbox = None
                 emotion_info = None
+                iris_info = None  # NEW
                 
                 try:
-                    processed_frame, face_bbox, emotion_info = self.result_queue.get_nowait()
+                    # MODIFIED: Now unpacking 4 values instead of 3
+                    processed_frame, face_bbox, emotion_info, iris_info = self.result_queue.get_nowait()
                     display_frame = processed_frame
                 except queue.Empty:
                     # Use original frame
                     pass
                 
-                # Print debug info
-                self.logger.print_debug_info(face_bbox, emotion_info, self.emonet_handler.device)
+                # Print debug info (MODIFIED to include iris_info)
+                self.logger.print_debug_info(face_bbox, emotion_info, iris_info, self.emonet_handler.device)
                 
-                # Create visualization
+                # Draw iris visualization if available (NEW)
+                if iris_info is not None:
+                    display_frame = self.iris_handler.draw_iris_visualization(display_frame, iris_info)
+                
+                # Create visualization (original emotion visualization)
                 display_frame = self.logger.create_visualization(display_frame, face_bbox, emotion_info)
                 
                 # Display frame
