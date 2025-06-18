@@ -57,6 +57,7 @@ class EmotionLogger:
                         face_bbox: Optional[np.ndarray], 
                         emotion_info: Optional[Dict],
                         iris_info: Optional[Dict],
+                        pose_info: Optional[Dict],
                         device: str) -> None:
         """
         Print detailed debug information to console.
@@ -155,6 +156,40 @@ class EmotionLogger:
             print(f"  Average Eye Aperture:   {metrics['average_ear_last_5_sec']:.4f}")
             print(f"  Eye Closure Percentage: {metrics['eye_closure_percentage']:.1f}%")
             print(f"  Longest Closure:        {metrics['longest_closure_frames']} frames")
+
+        # Pose and Body Tracking Raw Values
+        if pose_info is not None:
+            print(f"\n{'='*60}")
+            print(f"POSE AND BODY TRACKING RAW VALUES:")
+            print(f"{'='*60}")
+            
+            # Body posture metrics
+            posture = pose_info['posture_metrics']
+            print(f"\nBODY POSTURE ANALYSIS:")
+            print(f"  Trunk Inclination:")
+            print(f"    Forward/Backward: {posture['trunk_inclination_fb']:+.2f}° ({'Forward' if posture['trunk_inclination_fb'] > 0 else 'Backward' if posture['trunk_inclination_fb'] < 0 else 'Neutral'})")
+            print(f"    Left/Right Lean:  {posture['trunk_inclination_lr']:+.2f}° ({'Right' if posture['trunk_inclination_lr'] > 0 else 'Left' if posture['trunk_inclination_lr'] < 0 else 'Neutral'})")
+            
+            print(f"\n  Shoulder Symmetry:")
+            print(f"    Height Difference: {posture['shoulder_asymmetry']:+.2f}° ({'Right Higher' if posture['shoulder_asymmetry'] > 0 else 'Left Higher' if posture['shoulder_asymmetry'] < 0 else 'Level'})")
+            print(f"    Symmetry Score:    {posture['shoulder_symmetry_score']:.3f} (1.0=perfect)")
+            
+            print(f"\n  Hip Alignment:")
+            print(f"    Height Difference: {posture['hip_asymmetry']:+.2f}° ({'Right Higher' if posture['hip_asymmetry'] > 0 else 'Left Higher' if posture['hip_asymmetry'] < 0 else 'Level'})")
+            print(f"    Symmetry Score:    {posture['hip_symmetry_score']:.3f} (1.0=perfect)")
+            
+            print(f"\n  Head Orientation:")
+            print(f"    Head Tilt:         {posture['head_tilt']:+.2f}° ({'Right' if posture['head_tilt'] > 0 else 'Left' if posture['head_tilt'] < 0 else 'Neutral'})")
+            print(f"    Head Turn:         {posture['head_turn']:+.2f}° ({'Right' if posture['head_turn'] > 0 else 'Left' if posture['head_turn'] < 0 else 'Forward'})")
+            
+            if posture['is_sitting']:
+                print(f"\n  SITTING POSTURE:")
+                print(f"    Sitting Detected:  Yes")
+                print(f"    Back Straightness: {posture['sitting_back_angle']:.1f}° ({'Good' if 75 <= posture['sitting_back_angle'] <= 105 else 'Poor'})")
+                print(f"    Posture Quality:   {posture['sitting_posture_quality']}")
+            else:
+                print(f"\n  STANDING POSTURE:")
+                print(f"    Overall Alignment: {posture['overall_posture_score']:.3f}")
 
         # Emotional quadrant
         quadrant = self._get_emotional_quadrant(valence, arousal)
