@@ -147,7 +147,7 @@ class VideoStream:
                 
                 # Draw iris visualization if available (NEW)
                 if iris_info is not None:
-                    display_frame = self.iris_handler.draw_iris_visualization(display_frame, iris_info)
+                    display_frame = self.iris_handler.draw_iris_visualization(display_frame, iris_info,  self.logger.debug)
                 
                 # Create visualization (original emotion visualization)
                 display_frame = self.logger.create_visualization(display_frame, face_bbox, emotion_info)

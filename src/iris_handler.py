@@ -87,17 +87,34 @@ class IrisHandler:
         
     def calculate_iris_position(self, 
                                face_landmarks: np.ndarray,
-                               image_shape: Tuple[int, int]) -> Dict[str, float]:
+                               image_shape: Tuple[int, int],
+                               eyes_closed: bool = False) -> Dict[str, float]:
         """
         Calculate iris position relative to eye boundaries.
         
         Args:
             face_landmarks: All face landmarks from MediaPipe
             image_shape: Shape of the input image (height, width)
+            eyes_closed: Whether the eyes are currently closed
             
         Returns:
             Dictionary with iris position metrics
         """
+        # Si los ojos están cerrados, devolver valores que indiquen que no hay información válida
+        if eyes_closed:
+            return {
+                "left_iris_horizontal_offset": 0.0,
+                "left_iris_vertical_offset": 0.0,
+                "left_iris_centering": 0.0,
+                "right_iris_horizontal_offset": 0.0,
+                "right_iris_vertical_offset": 0.0,
+                "right_iris_centering": 0.0,
+                "average_horizontal_offset": 0.0,
+                "average_vertical_offset": 0.0,
+                "average_centering": 0.0,
+                "eyes_status": "closed"
+            }
+        
         h, w = image_shape[:2]
         
         # Get iris centers
@@ -145,7 +162,8 @@ class IrisHandler:
             "right_iris_centering": right_iris_centering,
             "average_horizontal_offset": (left_iris_h_offset + right_iris_h_offset) / 2,
             "average_vertical_offset": (left_iris_v_offset + right_iris_v_offset) / 2,
-            "average_centering": (left_iris_centering + right_iris_centering) / 2
+            "average_centering": (left_iris_centering + right_iris_centering) / 2,
+            "eyes_status": "open"
         }
         
     def detect_blink(self, left_ear: float, right_ear: float) -> bool:
@@ -161,6 +179,23 @@ class IrisHandler:
         """
         avg_ear = (left_ear + right_ear) / 2.0
         return avg_ear < self.blink_threshold
+        
+    def are_eyes_closed(self, left_ear: float, right_ear: float) -> bool:
+        """
+        Determine if eyes are currently closed (not just blinking).
+        
+        Args:
+            left_ear: Left eye aspect ratio
+            right_ear: Right eye aspect ratio
+            
+        Returns:
+            True if eyes are closed, False otherwise
+        """
+        # Usar un threshold ligeramente más bajo para detectar ojos cerrados
+        # vs parpadeos rápidos
+        closed_threshold = self.blink_threshold * 0.8
+        avg_ear = (left_ear + right_ear) / 2.0
+        return avg_ear < closed_threshold
         
     def calculate_eye_metrics(self) -> Dict[str, float]:
         """
@@ -227,8 +262,9 @@ class IrisHandler:
         right_ear = self.calculate_eye_aspect_ratio(right_eye_landmarks)
         avg_ear = (left_ear + right_ear) / 2.0
         
-        # Detect blink
+        # Detect blink and check if eyes are closed
         is_blinking = self.detect_blink(left_ear, right_ear)
+        eyes_closed = self.are_eyes_closed(left_ear, right_ear)
         
         # Update blink tracking
         if is_blinking:
@@ -247,15 +283,18 @@ class IrisHandler:
         # Update EAR history
         self.eye_aspect_ratio_history.append(avg_ear)
         
-        # Calculate iris position
-        iris_position = self.calculate_iris_position(landmarks_array, frame_rgb.shape)
+        # Calculate iris position (pasando el estado de ojos cerrados)
+        iris_position = self.calculate_iris_position(landmarks_array, frame_rgb.shape, eyes_closed)
         
         # Calculate eye metrics
         eye_metrics = self.calculate_eye_metrics()
         
-        # Get iris positions for visualization
-        left_iris_pos = landmarks_array[self.LEFT_IRIS_CENTER].astype(int)
-        right_iris_pos = landmarks_array[self.RIGHT_IRIS_CENTER].astype(int)
+        # Get iris positions for visualization (solo si los ojos están abiertos)
+        left_iris_pos = None
+        right_iris_pos = None
+        if not eyes_closed:
+            left_iris_pos = landmarks_array[self.LEFT_IRIS_CENTER].astype(int)
+            right_iris_pos = landmarks_array[self.RIGHT_IRIS_CENTER].astype(int)
         
         return {
             # Raw eye aperture values
@@ -265,6 +304,7 @@ class IrisHandler:
             
             # Blink information
             "is_blinking": is_blinking,
+            "eyes_closed": eyes_closed,  # Nueva información
             "total_blinks": self.total_blinks,
             "frames_since_last_blink": self.frames_since_last_blink,
             
@@ -274,7 +314,7 @@ class IrisHandler:
             # Eye metrics
             "eye_metrics": eye_metrics,
             
-            # Visualization data
+            # Visualization data (None si los ojos están cerrados)
             "left_iris_position": left_iris_pos,
             "right_iris_position": right_iris_pos,
             "left_eye_landmarks": left_eye_landmarks.astype(int),
@@ -283,32 +323,44 @@ class IrisHandler:
         
     def draw_iris_visualization(self, 
                               frame: np.ndarray, 
-                              iris_info: Dict) -> np.ndarray:
+                              iris_info: Dict,
+                              debug: bool = False) -> np.ndarray:
         """
         Draw iris tracking visualization on frame.
         
         Args:
             frame: Input frame
             iris_info: Iris tracking information
+            debug: Whether to show debug visualization
             
         Returns:
             Frame with visualization
         """
         vis_frame = frame.copy()
         
-        # Draw eye landmarks
-        for landmark in iris_info["left_eye_landmarks"]:
-            cv2.circle(vis_frame, tuple(landmark), 2, (0, 255, 0), -1)
-        for landmark in iris_info["right_eye_landmarks"]:
-            cv2.circle(vis_frame, tuple(landmark), 2, (0, 255, 0), -1)
+        # Solo dibujar si debug está activado
+        if debug:
+            # Draw eye landmarks
+            for landmark in iris_info["left_eye_landmarks"]:
+                cv2.circle(vis_frame, tuple(landmark), 2, (0, 255, 0), -1)
+            for landmark in iris_info["right_eye_landmarks"]:
+                cv2.circle(vis_frame, tuple(landmark), 2, (0, 255, 0), -1)
             
-        # Draw iris centers
-        cv2.circle(vis_frame, tuple(iris_info["left_iris_position"]), 4, (255, 0, 0), -1)
-        cv2.circle(vis_frame, tuple(iris_info["right_iris_position"]), 4, (255, 0, 0), -1)
-        
-        # Draw eye aperture values
-        aperture_text = f"L: {iris_info['left_eye_aperture']:.3f} R: {iris_info['right_eye_aperture']:.3f}"
-        cv2.putText(vis_frame, aperture_text,
-                   (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            # Solo dibujar iris centers si los ojos están abiertos
+            if not iris_info["eyes_closed"]:
+                if iris_info["left_iris_position"] is not None:
+                    cv2.circle(vis_frame, tuple(iris_info["left_iris_position"]), 4, (255, 0, 0), -1)
+                if iris_info["right_iris_position"] is not None:
+                    cv2.circle(vis_frame, tuple(iris_info["right_iris_position"]), 4, (255, 0, 0), -1)
+            
+            # Draw eye aperture values y estado de los ojos
+            aperture_text = f"L: {iris_info['left_eye_aperture']:.3f} R: {iris_info['right_eye_aperture']:.3f}"
+            status_text = f"Eyes: {'CLOSED' if iris_info['eyes_closed'] else 'OPEN'}"
+            
+            cv2.putText(vis_frame, aperture_text,
+                       (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(vis_frame, status_text,
+                       (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, 
+                       (0, 0, 255) if iris_info['eyes_closed'] else (0, 255, 0), 2)
             
         return vis_frame
