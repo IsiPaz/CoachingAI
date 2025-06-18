@@ -9,28 +9,26 @@ from collections import deque
 
 class IrisHandler:
     """
-    Handles eye tracking, visual attention detection, and fatigue/drowsiness detection using MediaPipe.
+    Handles eye tracking and iris position detection using MediaPipe.
+    Returns raw values for eye aperture, iris position, and blink detection.
     GPU-optimized where possible.
     """
     
     def __init__(self, 
                  device: str = "cuda:0",
-                 attention_threshold: float = 0.5,
                  blink_threshold: float = 0.2,
-                 fatigue_window_size: int = 150):
+                 history_window_size: int = 150):
         """
         Initialize the Iris handler.
         
         Args:
             device: Device to run models on (cuda:0, cpu)
-            attention_threshold: Threshold for determining if eyes are looking at camera
             blink_threshold: Eye aspect ratio threshold for blink detection
-            fatigue_window_size: Number of frames to analyze for fatigue detection
+            history_window_size: Number of frames to keep in history
         """
         self.device = device
-        self.attention_threshold = attention_threshold
         self.blink_threshold = blink_threshold
-        self.fatigue_window_size = fatigue_window_size
+        self.history_window_size = history_window_size
         
         # Initialize MediaPipe Face Mesh
         self.mp_face_mesh = mp.solutions.face_mesh
@@ -49,10 +47,9 @@ class IrisHandler:
         self.LEFT_IRIS_CENTER = 468
         self.RIGHT_IRIS_CENTER = 473
         
-        # Blink and fatigue tracking
-        self.blink_history = deque(maxlen=fatigue_window_size)
-        self.eye_aspect_ratio_history = deque(maxlen=fatigue_window_size)
-        self.attention_history = deque(maxlen=fatigue_window_size)
+        # History tracking
+        self.blink_history = deque(maxlen=history_window_size)
+        self.eye_aspect_ratio_history = deque(maxlen=history_window_size)
         
         # Frame counters
         self.total_blinks = 0
@@ -65,17 +62,17 @@ class IrisHandler:
             self.gpu_device = torch.device(device)
         
         print(f"IrisHandler initialized on device: {device}")
-        print("Eye tracking and fatigue detection enabled")
+        print("Eye tracking enabled - returning raw values")
         
     def calculate_eye_aspect_ratio(self, eye_landmarks: np.ndarray) -> float:
         """
-        Calculate Eye Aspect Ratio (EAR) for blink detection.
+        Calculate Eye Aspect Ratio (EAR) for eye aperture measurement.
         
         Args:
             eye_landmarks: Array of eye landmark coordinates
             
         Returns:
-            Eye aspect ratio value
+            Eye aspect ratio value (0 = closed, ~0.3 = normal open)
         """
         # Compute euclidean distances between vertical eye landmarks
         A = np.linalg.norm(eye_landmarks[1] - eye_landmarks[5])
@@ -88,19 +85,36 @@ class IrisHandler:
         ear = (A + B) / (2.0 * C)
         return ear
         
-    def calculate_gaze_direction(self, 
+    def calculate_iris_position(self, 
                                face_landmarks: np.ndarray,
-                               image_shape: Tuple[int, int]) -> Tuple[float, float, float]:
+                               image_shape: Tuple[int, int],
+                               eyes_closed: bool = False) -> Dict[str, float]:
         """
-        Calculate gaze direction based on iris position relative to eye corners.
+        Calculate iris position relative to eye boundaries.
         
         Args:
             face_landmarks: All face landmarks from MediaPipe
             image_shape: Shape of the input image (height, width)
+            eyes_closed: Whether the eyes are currently closed
             
         Returns:
-            Tuple of (horizontal_gaze, vertical_gaze, gaze_magnitude)
+            Dictionary with iris position metrics
         """
+        # Si los ojos están cerrados, devolver valores que indiquen que no hay información válida
+        if eyes_closed:
+            return {
+                "left_iris_horizontal_offset": 0.0,
+                "left_iris_vertical_offset": 0.0,
+                "left_iris_centering": 0.0,
+                "right_iris_horizontal_offset": 0.0,
+                "right_iris_vertical_offset": 0.0,
+                "right_iris_centering": 0.0,
+                "average_horizontal_offset": 0.0,
+                "average_vertical_offset": 0.0,
+                "average_centering": 0.0,
+                "eyes_status": "closed"
+            }
+        
         h, w = image_shape[:2]
         
         # Get iris centers
@@ -113,34 +127,44 @@ class IrisHandler:
         right_inner = face_landmarks[362]
         right_outer = face_landmarks[263]
         
-        # Calculate normalized iris positions
+        # Get eye top and bottom for vertical reference
+        left_top = face_landmarks[159]
+        left_bottom = face_landmarks[145]
+        right_top = face_landmarks[386]
+        right_bottom = face_landmarks[374]
+        
+        # Calculate eye dimensions
         left_eye_width = np.linalg.norm(left_outer - left_inner)
         right_eye_width = np.linalg.norm(right_outer - right_inner)
+        left_eye_height = np.linalg.norm(left_top - left_bottom)
+        right_eye_height = np.linalg.norm(right_top - right_bottom)
         
-        # Calculate relative iris positions
-        left_iris_relative = (left_iris - left_inner) / left_eye_width
-        right_iris_relative = (right_iris - right_inner) / right_eye_width
+        # Calculate iris position relative to eye center (normalized -1 to 1)
+        left_eye_center = (left_inner + left_outer) / 2
+        right_eye_center = (right_inner + right_outer) / 2
         
-        # Average both eyes for overall gaze
-        avg_horizontal = (left_iris_relative[0] + right_iris_relative[0]) / 2 - 0.5
-        avg_vertical = (left_iris_relative[1] + right_iris_relative[1]) / 2 - 0.5
+        left_iris_h_offset = (left_iris[0] - left_eye_center[0]) / (left_eye_width / 2)
+        left_iris_v_offset = (left_iris[1] - left_eye_center[1]) / (left_eye_height / 2)
         
-        # Calculate gaze magnitude
-        gaze_magnitude = np.sqrt(avg_horizontal**2 + avg_vertical**2)
+        right_iris_h_offset = (right_iris[0] - right_eye_center[0]) / (right_eye_width / 2)
+        right_iris_v_offset = (right_iris[1] - right_eye_center[1]) / (right_eye_height / 2)
         
-        return avg_horizontal, avg_vertical, gaze_magnitude
+        # Calculate how centered the iris is (0 = perfectly centered, 1 = at edge)
+        left_iris_centering = np.sqrt(left_iris_h_offset**2 + left_iris_v_offset**2)
+        right_iris_centering = np.sqrt(right_iris_h_offset**2 + right_iris_v_offset**2)
         
-    def detect_visual_attention(self, gaze_magnitude: float) -> bool:
-        """
-        Detect if the person is looking at the camera based on gaze magnitude.
-        
-        Args:
-            gaze_magnitude: Magnitude of gaze vector
-            
-        Returns:
-            True if looking at camera, False otherwise
-        """
-        return gaze_magnitude < self.attention_threshold
+        return {
+            "left_iris_horizontal_offset": left_iris_h_offset,
+            "left_iris_vertical_offset": left_iris_v_offset,
+            "left_iris_centering": left_iris_centering,
+            "right_iris_horizontal_offset": right_iris_h_offset,
+            "right_iris_vertical_offset": right_iris_v_offset,
+            "right_iris_centering": right_iris_centering,
+            "average_horizontal_offset": (left_iris_h_offset + right_iris_h_offset) / 2,
+            "average_vertical_offset": (left_iris_v_offset + right_iris_v_offset) / 2,
+            "average_centering": (left_iris_centering + right_iris_centering) / 2,
+            "eyes_status": "open"
+        }
         
     def detect_blink(self, left_ear: float, right_ear: float) -> bool:
         """
@@ -156,63 +180,55 @@ class IrisHandler:
         avg_ear = (left_ear + right_ear) / 2.0
         return avg_ear < self.blink_threshold
         
-    def calculate_fatigue_metrics(self) -> Dict[str, float]:
+    def are_eyes_closed(self, left_ear: float, right_ear: float) -> bool:
         """
-        Calculate fatigue and drowsiness metrics based on eye behavior history.
+        Determine if eyes are currently closed (not just blinking).
+        
+        Args:
+            left_ear: Left eye aspect ratio
+            right_ear: Right eye aspect ratio
+            
+        Returns:
+            True if eyes are closed, False otherwise
+        """
+        # Usar un threshold ligeramente más bajo para detectar ojos cerrados
+        # vs parpadeos rápidos
+        closed_threshold = self.blink_threshold * 0.8
+        avg_ear = (left_ear + right_ear) / 2.0
+        return avg_ear < closed_threshold
+        
+    def calculate_eye_metrics(self) -> Dict[str, float]:
+        """
+        Calculate various eye metrics based on history.
         
         Returns:
-            Dictionary containing fatigue metrics
+            Dictionary containing eye metrics
         """
         if len(self.blink_history) < 30:  # Need minimum history
             return {
-                "blink_rate": 0.0,
-                "average_ear": 0.5,
-                "attention_score": 1.0,
-                "fatigue_level": 0.0,
-                "drowsiness_alert": False
+                "blink_count_last_5_sec": 0,
+                "average_ear_last_5_sec": 0.3,
+                "eye_closure_percentage": 0.0,
+                "longest_closure_frames": 0
             }
             
-        # Calculate blink rate (blinks per minute)
-        recent_blinks = sum(self.blink_history)
-        time_window = len(self.blink_history) / 30.0  # Assuming 30 FPS
-        blink_rate = (recent_blinks / time_window) * 60.0
+        # Calculate metrics over last 5 seconds (assuming 30 FPS)
+        frames_5_sec = min(150, len(self.blink_history))
+        recent_blinks = sum(list(self.blink_history)[-frames_5_sec:])
         
-        # Calculate average EAR
-        avg_ear = np.mean(self.eye_aspect_ratio_history) if self.eye_aspect_ratio_history else 0.5
+        # Average EAR over recent history
+        recent_ears = list(self.eye_aspect_ratio_history)[-frames_5_sec:]
+        avg_ear = np.mean(recent_ears) if recent_ears else 0.3
         
-        # Calculate attention score
-        attention_score = sum(self.attention_history) / len(self.attention_history) if self.attention_history else 1.0
-        
-        # Calculate fatigue level (0-1)
-        fatigue_indicators = []
-        
-        # High blink rate (>20 blinks/min indicates fatigue)
-        if blink_rate > 20:
-            fatigue_indicators.append(min((blink_rate - 20) / 20, 1.0))
-            
-        # Low average EAR (droopy eyes)
-        if avg_ear < 0.25:
-            fatigue_indicators.append(min((0.25 - avg_ear) / 0.1, 1.0))
-            
-        # Low attention score
-        if attention_score < 0.5:
-            fatigue_indicators.append(1.0 - attention_score)
-            
-        # Long eye closure
-        if self.consecutive_closed_frames > 15:  # More than 0.5 seconds at 15 FPS
-            fatigue_indicators.append(min(self.consecutive_closed_frames / 15, 1.0))
-            
-        fatigue_level = np.mean(fatigue_indicators) if fatigue_indicators else 0.0
-        
-        # Drowsiness alert if fatigue level is high
-        drowsiness_alert = fatigue_level > 0.7
+        # Percentage of time eyes were closed
+        closed_frames = sum(1 for ear in recent_ears if ear < self.blink_threshold)
+        closure_percentage = (closed_frames / len(recent_ears) * 100) if recent_ears else 0.0
         
         return {
-            "blink_rate": blink_rate,
-            "average_ear": avg_ear,
-            "attention_score": attention_score,
-            "fatigue_level": fatigue_level,
-            "drowsiness_alert": drowsiness_alert
+            "blink_count_last_5_sec": recent_blinks,
+            "average_ear_last_5_sec": avg_ear,
+            "eye_closure_percentage": closure_percentage,
+            "longest_closure_frames": self.consecutive_closed_frames
         }
         
     def process_frame(self, frame_rgb: np.ndarray) -> Optional[Dict]:
@@ -223,7 +239,7 @@ class IrisHandler:
             frame_rgb: Input frame in RGB format
             
         Returns:
-            Dictionary containing iris tracking results or None if no face detected
+            Dictionary containing raw iris tracking values or None if no face detected
         """
         # Run MediaPipe face mesh detection
         results = self.face_mesh.process(frame_rgb)
@@ -241,13 +257,14 @@ class IrisHandler:
         left_eye_landmarks = landmarks_array[self.LEFT_EYE_INDICES]
         right_eye_landmarks = landmarks_array[self.RIGHT_EYE_INDICES]
         
-        # Calculate eye aspect ratios
+        # Calculate eye aspect ratios (eye aperture)
         left_ear = self.calculate_eye_aspect_ratio(left_eye_landmarks)
         right_ear = self.calculate_eye_aspect_ratio(right_eye_landmarks)
         avg_ear = (left_ear + right_ear) / 2.0
         
-        # Detect blink
+        # Detect blink and check if eyes are closed
         is_blinking = self.detect_blink(left_ear, right_ear)
+        eyes_closed = self.are_eyes_closed(left_ear, right_ear)
         
         # Update blink tracking
         if is_blinking:
@@ -266,72 +283,84 @@ class IrisHandler:
         # Update EAR history
         self.eye_aspect_ratio_history.append(avg_ear)
         
-        # Calculate gaze direction
-        h_gaze, v_gaze, gaze_magnitude = self.calculate_gaze_direction(landmarks_array, frame_rgb.shape)
+        # Calculate iris position (pasando el estado de ojos cerrados)
+        iris_position = self.calculate_iris_position(landmarks_array, frame_rgb.shape, eyes_closed)
         
-        # Detect visual attention
-        is_looking_at_camera = self.detect_visual_attention(gaze_magnitude)
-        self.attention_history.append(1 if is_looking_at_camera else 0)
+        # Calculate eye metrics
+        eye_metrics = self.calculate_eye_metrics()
         
-        # Calculate fatigue metrics
-        fatigue_metrics = self.calculate_fatigue_metrics()
-        
-        # Get iris positions for visualization
-        left_iris_pos = landmarks_array[self.LEFT_IRIS_CENTER].astype(int)
-        right_iris_pos = landmarks_array[self.RIGHT_IRIS_CENTER].astype(int)
+        # Get iris positions for visualization (solo si los ojos están abiertos)
+        left_iris_pos = None
+        right_iris_pos = None
+        if not eyes_closed:
+            left_iris_pos = landmarks_array[self.LEFT_IRIS_CENTER].astype(int)
+            right_iris_pos = landmarks_array[self.RIGHT_IRIS_CENTER].astype(int)
         
         return {
-            "left_ear": left_ear,
-            "right_ear": right_ear,
-            "average_ear": avg_ear,
+            # Raw eye aperture values
+            "left_eye_aperture": left_ear,
+            "right_eye_aperture": right_ear,
+            "average_eye_aperture": avg_ear,
+            
+            # Blink information
             "is_blinking": is_blinking,
+            "eyes_closed": eyes_closed,  # Nueva información
             "total_blinks": self.total_blinks,
-            "horizontal_gaze": h_gaze,
-            "vertical_gaze": v_gaze,
-            "gaze_magnitude": gaze_magnitude,
-            "is_looking_at_camera": is_looking_at_camera,
+            "frames_since_last_blink": self.frames_since_last_blink,
+            
+            # Iris position data
+            "iris_position": iris_position,
+            
+            # Eye metrics
+            "eye_metrics": eye_metrics,
+            
+            # Visualization data (None si los ojos están cerrados)
             "left_iris_position": left_iris_pos,
             "right_iris_position": right_iris_pos,
             "left_eye_landmarks": left_eye_landmarks.astype(int),
-            "right_eye_landmarks": right_eye_landmarks.astype(int),
-            "fatigue_metrics": fatigue_metrics
+            "right_eye_landmarks": right_eye_landmarks.astype(int)
         }
         
     def draw_iris_visualization(self, 
                               frame: np.ndarray, 
-                              iris_info: Dict) -> np.ndarray:
+                              iris_info: Dict,
+                              debug: bool = False) -> np.ndarray:
         """
         Draw iris tracking visualization on frame.
         
         Args:
             frame: Input frame
             iris_info: Iris tracking information
+            debug: Whether to show debug visualization
             
         Returns:
             Frame with visualization
         """
         vis_frame = frame.copy()
         
-        # Draw eye landmarks
-        for landmark in iris_info["left_eye_landmarks"]:
-            cv2.circle(vis_frame, tuple(landmark), 2, (0, 255, 0), -1)
-        for landmark in iris_info["right_eye_landmarks"]:
-            cv2.circle(vis_frame, tuple(landmark), 2, (0, 255, 0), -1)
+        # Solo dibujar si debug está activado
+        if debug:
+            # Draw eye landmarks
+            for landmark in iris_info["left_eye_landmarks"]:
+                cv2.circle(vis_frame, tuple(landmark), 2, (0, 255, 0), -1)
+            for landmark in iris_info["right_eye_landmarks"]:
+                cv2.circle(vis_frame, tuple(landmark), 2, (0, 255, 0), -1)
             
-        # Draw iris centers
-        cv2.circle(vis_frame, tuple(iris_info["left_iris_position"]), 4, (255, 0, 0), -1)
-        cv2.circle(vis_frame, tuple(iris_info["right_iris_position"]), 4, (255, 0, 0), -1)
-        
-        # Draw attention indicator
-        color = (0, 255, 0) if iris_info["is_looking_at_camera"] else (0, 0, 255)
-        cv2.putText(vis_frame, 
-                   "LOOKING" if iris_info["is_looking_at_camera"] else "NOT LOOKING",
-                   (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-        
-        # Draw fatigue warning if needed
-        if iris_info["fatigue_metrics"]["drowsiness_alert"]:
-            cv2.putText(vis_frame, "DROWSINESS ALERT!", 
-                       (frame.shape[1]//2 - 100, 50), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
+            # Solo dibujar iris centers si los ojos están abiertos
+            if not iris_info["eyes_closed"]:
+                if iris_info["left_iris_position"] is not None:
+                    cv2.circle(vis_frame, tuple(iris_info["left_iris_position"]), 4, (255, 0, 0), -1)
+                if iris_info["right_iris_position"] is not None:
+                    cv2.circle(vis_frame, tuple(iris_info["right_iris_position"]), 4, (255, 0, 0), -1)
+            
+            # Draw eye aperture values y estado de los ojos
+            aperture_text = f"L: {iris_info['left_eye_aperture']:.3f} R: {iris_info['right_eye_aperture']:.3f}"
+            status_text = f"Eyes: {'CLOSED' if iris_info['eyes_closed'] else 'OPEN'}"
+            
+            cv2.putText(vis_frame, aperture_text,
+                       (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(vis_frame, status_text,
+                       (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, 
+                       (0, 0, 255) if iris_info['eyes_closed'] else (0, 255, 0), 2)
             
         return vis_frame

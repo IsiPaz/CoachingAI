@@ -64,6 +64,7 @@ class EmotionLogger:
         Args:
             face_bbox: Face bounding box coordinates
             emotion_info: Processed emotion information
+            iris_info: Raw iris tracking information
             device: Device being used for inference
         """
         if not self.debug:
@@ -111,31 +112,53 @@ class EmotionLogger:
         print(f"Valence: {valence:+.3f} ({'Positive' if valence > 0 else 'Negative' if valence < 0 else 'Neutral'})")
         print(f"Arousal:  {arousal:+.3f} ({'High' if arousal > 0 else 'Low' if arousal < 0 else 'Neutral'})")
         
-        # Iris and Eye Tracking Analysis
+        # Iris and Eye Tracking Raw Values
         if iris_info is not None:
-            print(f"\nIRIS AND EYE TRACKING ANALYSIS:")
-            print(f"Left Eye Aspect Ratio: {iris_info['left_ear']:.3f}")
-            print(f"Right Eye Aspect Ratio: {iris_info['right_ear']:.3f}")
-            print(f"Average EAR: {iris_info['average_ear']:.3f}")
-            print(f"Currently Blinking: {'Yes' if iris_info['is_blinking'] else 'No'}")
-            print(f"Total Blinks: {iris_info['total_blinks']}")
+            print(f"\n{'='*60}")
+            print(f"IRIS AND EYE TRACKING RAW VALUES:")
+            print(f"{'='*60}")
             
-            print(f"\nGAZE ANALYSIS:")
-            print(f"Horizontal Gaze: {iris_info['horizontal_gaze']:+.3f} ({'Right' if iris_info['horizontal_gaze'] > 0 else 'Left' if iris_info['horizontal_gaze'] < 0 else 'Center'})")
-            print(f"Vertical Gaze: {iris_info['vertical_gaze']:+.3f} ({'Up' if iris_info['vertical_gaze'] < 0 else 'Down' if iris_info['vertical_gaze'] > 0 else 'Center'})")
-            print(f"Gaze Magnitude: {iris_info['gaze_magnitude']:.3f}")
-            print(f"Looking at Camera: {'Yes' if iris_info['is_looking_at_camera'] else 'No'}")
+            # Eye Aperture Values
+            print(f"\nEYE APERTURE (0=closed, ~0.3=normal):")
+            print(f"  Left Eye Aperture:  {iris_info['left_eye_aperture']:.4f}")
+            print(f"  Right Eye Aperture: {iris_info['right_eye_aperture']:.4f}")
+            print(f"  Average Aperture:   {iris_info['average_eye_aperture']:.4f}")
             
-            fatigue = iris_info['fatigue_metrics']
-            print(f"\nFATIGUE ANALYSIS:")
-            print(f"Blink Rate: {fatigue['blink_rate']:.1f} blinks/min")
-            print(f"Attention Score: {fatigue['attention_score']:.2f}")
-            print(f"Fatigue Level: {fatigue['fatigue_level']:.2f} ({fatigue['fatigue_level']*100:.0f}%)")
-            print(f"Drowsiness Alert: {'YES - DRIVER ALERT!' if fatigue['drowsiness_alert'] else 'No'}")
+            # Iris Position Values
+            iris_pos = iris_info['iris_position']
+            print(f"\nIRIS POSITION (normalized -1 to +1):")
+            print(f"  Left Iris:")
+            print(f"    Horizontal Offset: {iris_pos['left_iris_horizontal_offset']:+.4f} ({'Right' if iris_pos['left_iris_horizontal_offset'] > 0 else 'Left' if iris_pos['left_iris_horizontal_offset'] < 0 else 'Center'})")
+            print(f"    Vertical Offset:   {iris_pos['left_iris_vertical_offset']:+.4f} ({'Down' if iris_pos['left_iris_vertical_offset'] > 0 else 'Up' if iris_pos['left_iris_vertical_offset'] < 0 else 'Center'})")
+            print(f"    Centering Score:   {iris_pos['left_iris_centering']:.4f} (0=centered, 1=edge)")
+            
+            print(f"  Right Iris:")
+            print(f"    Horizontal Offset: {iris_pos['right_iris_horizontal_offset']:+.4f} ({'Right' if iris_pos['right_iris_horizontal_offset'] > 0 else 'Left' if iris_pos['right_iris_horizontal_offset'] < 0 else 'Center'})")
+            print(f"    Vertical Offset:   {iris_pos['right_iris_vertical_offset']:+.4f} ({'Down' if iris_pos['right_iris_vertical_offset'] > 0 else 'Up' if iris_pos['right_iris_vertical_offset'] < 0 else 'Center'})")
+            print(f"    Centering Score:   {iris_pos['right_iris_centering']:.4f} (0=centered, 1=edge)")
+            
+            print(f"  Average Values:")
+            print(f"    Avg Horizontal:    {iris_pos['average_horizontal_offset']:+.4f}")
+            print(f"    Avg Vertical:      {iris_pos['average_vertical_offset']:+.4f}")
+            print(f"    Avg Centering:     {iris_pos['average_centering']:.4f}")
+            
+            # Blink Information
+            print(f"\nBLINK TRACKING:")
+            print(f"  Currently Blinking:     {'Yes' if iris_info['is_blinking'] else 'No'}")
+            print(f"  Total Blinks:           {iris_info['total_blinks']}")
+            print(f"  Frames Since Last Blink: {iris_info['frames_since_last_blink']}")
+            
+            # Eye Metrics
+            metrics = iris_info['eye_metrics']
+            print(f"\nEYE METRICS (last 5 seconds):")
+            print(f"  Blink Count:            {metrics['blink_count_last_5_sec']}")
+            print(f"  Average Eye Aperture:   {metrics['average_ear_last_5_sec']:.4f}")
+            print(f"  Eye Closure Percentage: {metrics['eye_closure_percentage']:.1f}%")
+            print(f"  Longest Closure:        {metrics['longest_closure_frames']} frames")
 
         # Emotional quadrant
         quadrant = self._get_emotional_quadrant(valence, arousal)
-        print(f"Emotional quadrant: {quadrant}")
+        print(f"\nEmotional quadrant: {quadrant}")
         
         # Performance info
         print(f"\nPERFORMANCE:")
@@ -205,14 +228,16 @@ class EmotionLogger:
     def create_visualization(self, 
                            frame_bgr: np.ndarray,
                            face_bbox: Optional[np.ndarray] = None,
-                           emotion_info: Optional[Dict] = None) -> np.ndarray:
+                           emotion_info: Optional[Dict] = None,
+                           iris_info: Optional[Dict] = None) -> np.ndarray:
         """
-        Create the final visualization with emotion information.
+        Create the final visualization with emotion and iris information.
         
         Args:
             frame_bgr: Input frame in BGR format
             face_bbox: Face bounding box coordinates
             emotion_info: Processed emotion information
+            iris_info: Raw iris tracking information
             
         Returns:
             Visualization frame
@@ -255,6 +280,24 @@ class EmotionLogger:
                 overlay_region = vis_frame[y_offset:y_offset+overlay_size, x_offset:x_offset+overlay_size]
                 blended = cv2.addWeighted(overlay_region, 0.3, circumplex_resized, 0.7, 0)
                 vis_frame[y_offset:y_offset+overlay_size, x_offset:x_offset+overlay_size] = blended
+        
+        # Draw iris information if available
+        if iris_info is not None:
+            # Draw eye aperture values on screen
+            aperture_text = f"Eye Aperture - L: {iris_info['left_eye_aperture']:.3f} R: {iris_info['right_eye_aperture']:.3f}"
+            cv2.putText(vis_frame, aperture_text, (10, vis_frame.shape[0] - 80), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            
+            # Draw iris centering value
+            centering = iris_info['iris_position']['average_centering']
+            centering_text = f"Iris Centering: {centering:.3f}"
+            cv2.putText(vis_frame, centering_text, (10, vis_frame.shape[0] - 60), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            
+            # Draw blink count
+            blink_text = f"Blinks: {iris_info['total_blinks']}"
+            cv2.putText(vis_frame, blink_text, (10, vis_frame.shape[0] - 40), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         
         # Draw FPS counter (only if option enabled)
         if self.show_fps:
