@@ -238,6 +238,7 @@ class VideoStream:
                 if key == ord('q'):
                     break
                 elif key == ord('s'):
+                    self.logger.set_last_debug_state(face_bbox, emotion_info, iris_info, pose_info, self.emonet_handler.device)
                     self.logger.save_screenshot(display_frame)
                 elif key == ord('d') and self.logger.debug:
                     self.logger.toggle_debug_interval()

@@ -1,4 +1,5 @@
 import cv2
+import json
 import numpy as np
 import time
 from typing import Dict, Optional
@@ -33,7 +34,27 @@ class EmotionLogger:
         self.fps_counter = 0
         self.fps_start_time = time.time()
         self.current_fps = 0.0
-        
+
+        # Last state to allow saving debug JSON
+        self.last_face_bbox = None
+        self.last_emotion_info = None
+        self.last_iris_info = None
+        self.last_pose_info = None
+        self.last_device = "unknown"
+
+    def set_last_debug_state(self,
+                            face_bbox: Optional[np.ndarray],
+                            emotion_info: Optional[Dict],
+                            iris_info: Optional[Dict],
+                            pose_info: Optional[Dict],
+                            device: str) -> None:
+        """Store the latest debug state for screenshot JSON logging."""
+        self.last_face_bbox = face_bbox
+        self.last_emotion_info = emotion_info
+        self.last_iris_info = iris_info
+        self.last_pose_info = pose_info
+        self.last_device = device
+
     def update_fps(self) -> None:
         """Update FPS counter."""
         if self.show_fps:
@@ -127,7 +148,7 @@ class EmotionLogger:
             
             # Iris Position Values
             iris_pos = iris_info['iris_position']
-            print(f"\nIRIS POSITION (normalized -1 to +1):")
+            print(f"\n 👀IRIS POSITION (normalized -1 to +1):")
             print(f"  Left Iris:")
             print(f"    Horizontal Offset: {iris_pos['left_iris_horizontal_offset']:+.4f} ({'Right' if iris_pos['left_iris_horizontal_offset'] > 0 else 'Left' if iris_pos['left_iris_horizontal_offset'] < 0 else 'Center'})")
             print(f"    Vertical Offset:   {iris_pos['left_iris_vertical_offset']:+.4f} ({'Down' if iris_pos['left_iris_vertical_offset'] > 0 else 'Up' if iris_pos['left_iris_vertical_offset'] < 0 else 'Center'})")
@@ -165,6 +186,17 @@ class EmotionLogger:
             
             # Body posture metrics
             posture = pose_info['posture_metrics']
+
+            score = posture['overall_posture_score']
+            if score > 0.68:
+                quality_text = "Excellent"
+            elif score > 0.48:
+                quality_text = "Good"
+            else:
+                quality_text = "Needs Improvement"
+        
+            pose_info["posture_metrics"]["posture_quality_text"] = quality_text
+
             print(f"\nBODY POSTURE ANALYSIS:")
             print(f"  Trunk Inclination:")
             print(f"    Forward/Backward: {posture['trunk_inclination_fb']:+.2f}° ({'Forward' if posture['trunk_inclination_fb'] > 0 else 'Backward' if posture['trunk_inclination_fb'] < 0 else 'Neutral'})")
@@ -338,7 +370,7 @@ class EmotionLogger:
         
     def save_screenshot(self, frame: np.ndarray) -> str:
         """
-        Save a screenshot of the current frame.
+        Save a screenshot of the current frame and corresponding debug JSON.
         
         Args:
             frame: Frame to save
@@ -348,6 +380,52 @@ class EmotionLogger:
         """
         timestamp = int(time.time())
         filename = f"emotion_screenshot_{timestamp}.jpg"
+        json_filename = f"emotion_snapshot_{timestamp}.json"
+
+        # Save image
         cv2.imwrite(filename, frame)
         print(f"Screenshot saved: {filename}")
+        
+        # Save JSON
+        self._save_debug_json(json_filename)
+        
         return filename
+
+    def _save_debug_json(self, json_filename: str) -> None:
+        """Save the latest debug information as JSON."""
+
+        def _convert_numpy_types(obj):
+            """
+            Recursively convert numpy types and tuples to standard Python types for JSON serialization.
+            """
+            if isinstance(obj, dict):
+                return {k: _convert_numpy_types(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple, np.ndarray)):
+                return [_convert_numpy_types(v) for v in obj]
+            elif isinstance(obj, (np.integer, np.int32, np.int64)):
+                return int(obj)
+            elif isinstance(obj, (np.floating, np.float32, np.float64)):
+                return float(obj)
+            elif isinstance(obj, (np.bool_, bool)):
+                return bool(obj)
+            elif obj is None:
+                return None
+            else:
+                return str(obj) if not isinstance(obj, (str, int, float, bool)) else obj
+
+
+        data = {
+            "timestamp": int(time.time()),
+            "device": self.last_device,
+            "face_bbox": self.last_face_bbox.tolist() if self.last_face_bbox is not None else None,
+            "emotion_info": _convert_numpy_types(self.last_emotion_info) if self.last_emotion_info is not None else None,
+            "iris_info": _convert_numpy_types(self.last_iris_info) if self.last_iris_info is not None else None,
+            "pose_info": _convert_numpy_types(self.last_pose_info) if self.last_pose_info is not None else None
+        }
+
+        try:
+            with open(json_filename, "w") as f:
+                json.dump(data, f, indent=2)
+            print(f"Debug info saved: {json_filename}")
+        except Exception as e:
+            print(f"Failed to save JSON: {e}")
