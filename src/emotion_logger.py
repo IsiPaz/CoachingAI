@@ -174,22 +174,12 @@ class EmotionLogger:
             print(f"    Height Difference: {posture['shoulder_asymmetry']:+.2f}° ({'Right Higher' if posture['shoulder_asymmetry'] > 0 else 'Left Higher' if posture['shoulder_asymmetry'] < 0 else 'Level'})")
             print(f"    Symmetry Score:    {posture['shoulder_symmetry_score']:.3f} (1.0=perfect)")
             
-            print(f"\n  Hip Alignment:")
-            print(f"    Height Difference: {posture['hip_asymmetry']:+.2f}° ({'Right Higher' if posture['hip_asymmetry'] > 0 else 'Left Higher' if posture['hip_asymmetry'] < 0 else 'Level'})")
-            print(f"    Symmetry Score:    {posture['hip_symmetry_score']:.3f} (1.0=perfect)")
-            
             print(f"\n  Head Orientation:")
             print(f"    Head Tilt:         {posture['head_tilt']:+.2f}° ({'Right' if posture['head_tilt'] > 0 else 'Left' if posture['head_tilt'] < 0 else 'Neutral'})")
             print(f"    Head Turn:         {posture['head_turn']:+.2f}° ({'Right' if posture['head_turn'] > 0 else 'Left' if posture['head_turn'] < 0 else 'Forward'})")
             
-            if posture['is_sitting']:
-                print(f"\n  SITTING POSTURE:")
-                print(f"    Sitting Detected:  Yes")
-                print(f"    Back Straightness: {posture['sitting_back_angle']:.1f}° ({'Good' if 75 <= posture['sitting_back_angle'] <= 105 else 'Poor'})")
-                print(f"    Posture Quality:   {posture['sitting_posture_quality']}")
-            else:
-                print(f"\n  STANDING POSTURE:")
-                print(f"    Overall Alignment: {posture['overall_posture_score']:.3f}")
+            print(f"\n  OVERALL POSTURE:")
+            print(f"    Overall Alignment: {posture['overall_posture_score']:.3f}")
 
         # Emotional quadrant
         quadrant = self._get_emotional_quadrant(valence, arousal)

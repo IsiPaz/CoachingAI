@@ -11,7 +11,7 @@ class PoseHandler:
     """
     Handles body pose tracking and posture analysis using MediaPipe Pose.
     Returns comprehensive posture metrics including trunk inclination, 
-    shoulder/hip symmetry, head orientation, and sitting posture analysis.
+    shoulder symmetry, and head orientation.
     GPU-optimized where possible.
     """
     
@@ -158,37 +158,6 @@ class PoseHandler:
         
         return asymmetry_angle, symmetry_score
     
-    def calculate_hip_symmetry(self, landmarks: np.ndarray) -> Tuple[float, float]:
-        """
-        Calculate hip symmetry and asymmetry with more realistic thresholds.
-        
-        Args:
-            landmarks: Pose landmarks array
-            
-        Returns:
-            Tuple of (asymmetry_angle, symmetry_score)
-        """
-        left_hip = landmarks[self.POSE_LANDMARKS['left_hip']]
-        right_hip = landmarks[self.POSE_LANDMARKS['right_hip']]
-        
-        # Calculate height difference
-        height_diff = right_hip[1] - left_hip[1]
-        hip_width = abs(right_hip[0] - left_hip[0])
-        
-        # Convert to angle
-        asymmetry_angle = np.degrees(np.arctan2(height_diff, hip_width))
-        
-        # More realistic symmetry score - up to 6° difference is still good
-        max_reasonable_angle = 15.0  # Increased from 10.0
-        good_threshold = 6.0  # Perfect range
-        
-        if abs(asymmetry_angle) <= good_threshold:
-            symmetry_score = 1.0
-        else:
-            symmetry_score = max(0.3, 1.0 - abs(asymmetry_angle) / max_reasonable_angle)
-        
-        return asymmetry_angle, symmetry_score
-    
     def calculate_head_orientation(self, landmarks: np.ndarray) -> Tuple[float, float]:
         """
         Calculate head tilt and turn angles.
@@ -216,50 +185,6 @@ class PoseHandler:
         
         return head_tilt, head_turn
     
-    def detect_sitting_posture(self, landmarks: np.ndarray) -> Tuple[bool, float, str]:
-        """
-        Detect if person is sitting and analyze sitting posture quality with flexible thresholds.
-        
-        Args:
-            landmarks: Pose landmarks array
-            
-        Returns:
-            Tuple of (is_sitting, back_angle, posture_quality)
-        """
-        # Get key points for sitting detection
-        left_hip = landmarks[self.POSE_LANDMARKS['left_hip']]
-        right_hip = landmarks[self.POSE_LANDMARKS['right_hip']]
-        left_knee = landmarks[self.POSE_LANDMARKS['left_knee']]
-        right_knee = landmarks[self.POSE_LANDMARKS['right_knee']]
-        left_shoulder = landmarks[self.POSE_LANDMARKS['left_shoulder']]
-        right_shoulder = landmarks[self.POSE_LANDMARKS['right_shoulder']]
-        
-        # Check if sitting based on hip-knee relationship
-        hip_midpoint = (left_hip + right_hip) / 2
-        knee_midpoint = (left_knee + right_knee) / 2
-        
-        # In sitting position, knees are typically at similar height or slightly lower than hips
-        hip_knee_diff = hip_midpoint[1] - knee_midpoint[1]
-        is_sitting = -50 < hip_knee_diff < 100  # Threshold for sitting detection
-        
-        if is_sitting:
-            # Calculate back angle for sitting posture
-            shoulder_midpoint = (left_shoulder + right_shoulder) / 2
-            back_vector = shoulder_midpoint - hip_midpoint
-            back_angle = 90 + np.degrees(np.arctan2(back_vector[1], abs(back_vector[0])))
-            
-            # More flexible posture quality thresholds
-            if 70 <= back_angle <= 110:  # Expanded from 75-105
-                quality = "Good"
-            elif 55 <= back_angle < 70 or 110 < back_angle <= 125:  # Expanded range
-                quality = "Fair"
-            else:
-                quality = "Poor"
-                
-            return True, back_angle, quality
-        else:
-            return False, 0.0, "Standing"
-    
     def calculate_overall_posture_score(self, posture_metrics: Dict) -> float:
         """
         Calculate overall posture score based on all metrics with flexible ranges.
@@ -272,48 +197,50 @@ class PoseHandler:
         """
         scores = []
         
-        # Trunk inclination score (more flexible - up to 15° is still good)
+        # Trunk inclination score (slightly more flexible)
         trunk_fb = abs(posture_metrics['trunk_inclination_fb'])
         trunk_lr = abs(posture_metrics['trunk_inclination_lr'])
         
-        # Good range: 0-10°, Fair: 10-20°, Poor: >20°
-        if trunk_fb <= 10 and trunk_lr <= 10:
+        # Good range: 0-17°, Fair: 17-28°, Poor: >28°
+        if trunk_fb <= 17 and trunk_lr <= 17:
             trunk_score = 1.0
-        elif trunk_fb <= 20 and trunk_lr <= 20:
-            trunk_score = max(0.6, 1.0 - (trunk_fb + trunk_lr) / 40.0)
+        elif trunk_fb <= 28 and trunk_lr <= 28:
+            trunk_score = max(0.65, 1.0 - (trunk_fb + trunk_lr) / 56.0)
         else:
-            trunk_score = max(0.2, 1.0 - (trunk_fb + trunk_lr) / 60.0)
+            trunk_score = max(0.3, 1.0 - (trunk_fb + trunk_lr) / 85.0)
         scores.append(trunk_score)
         
-        # Symmetry scores (already good, but give more weight to being close to perfect)
+        # Symmetry scores (slightly more generous)
         shoulder_score = posture_metrics['shoulder_symmetry_score']
+        # Small boost for decent symmetry
         if shoulder_score > 0.8:
-            shoulder_score = min(1.0, shoulder_score + 0.1)  # Bonus for good symmetry
+            shoulder_score = min(1.0, shoulder_score + 0.1)
+        elif shoulder_score > 0.65:
+            shoulder_score = min(1.0, shoulder_score + 0.05)
         scores.append(shoulder_score)
         
-        hip_score = posture_metrics['hip_symmetry_score']
-        if hip_score > 0.8:
-            hip_score = min(1.0, hip_score + 0.1)  # Bonus for good symmetry
-        scores.append(hip_score)
-        
-        # Head orientation score (more flexible - normal head movement)
+        # Head orientation score (slightly more permissive)
         head_tilt = abs(posture_metrics['head_tilt'])
         head_turn = abs(posture_metrics['head_turn'])
         
-        # Good range: 0-15°, Fair: 15-30°, Poor: >30°
-        if head_tilt <= 15 and head_turn <= 15:
+        # Good range: 0-20°, Fair: 20-38°, Poor: >38°
+        if head_tilt <= 20 and head_turn <= 20:
             head_score = 1.0
-        elif head_tilt <= 30 and head_turn <= 30:
-            head_score = max(0.6, 1.0 - (head_tilt + head_turn) / 60.0)
+        elif head_tilt <= 38 and head_turn <= 38:
+            head_score = max(0.6, 1.0 - (head_tilt + head_turn) / 76.0)
         else:
-            head_score = max(0.2, 1.0 - (head_tilt + head_turn) / 80.0)
+            head_score = max(0.2, 1.0 - (head_tilt + head_turn) / 110.0)
         scores.append(head_score)
         
-        # Calculate weighted average (give less weight to head for overall posture)
-        weights = [0.3, 0.25, 0.25, 0.2]  # trunk, shoulder, hip, head
+        # Calculate weighted average with small boost
+        weights = [0.4, 0.35, 0.25]  # trunk, shoulder, head
         weighted_score = sum(score * weight for score, weight in zip(scores, weights))
         
-        return min(1.0, weighted_score)
+        # Apply a small boost if most components are decent
+        if sum(1 for score in scores if score > 0.6) >= 2:
+            weighted_score = min(1.0, weighted_score + 0.07)
+        
+        return weighted_score
     
     def process_frame(self, frame_rgb: np.ndarray) -> Optional[Dict]:
         """
@@ -338,9 +265,7 @@ class PoseHandler:
         # Calculate all posture metrics
         trunk_fb, trunk_lr = self.calculate_trunk_inclination(landmarks_array)
         shoulder_asym, shoulder_sym = self.calculate_shoulder_symmetry(landmarks_array)
-        hip_asym, hip_sym = self.calculate_hip_symmetry(landmarks_array)
         head_tilt, head_turn = self.calculate_head_orientation(landmarks_array)
-        is_sitting, back_angle, posture_quality = self.detect_sitting_posture(landmarks_array)
         
         # Create posture metrics dictionary
         posture_metrics = {
@@ -348,13 +273,8 @@ class PoseHandler:
             'trunk_inclination_lr': trunk_lr,
             'shoulder_asymmetry': shoulder_asym,
             'shoulder_symmetry_score': shoulder_sym,
-            'hip_asymmetry': hip_asym,
-            'hip_symmetry_score': hip_sym,
             'head_tilt': head_tilt,
             'head_turn': head_turn,
-            'is_sitting': is_sitting,
-            'sitting_back_angle': back_angle,
-            'sitting_posture_quality': posture_quality,
         }
         
         # Calculate overall posture score
@@ -368,8 +288,7 @@ class PoseHandler:
         if len(self.posture_history) >= 5:
             # Smooth numerical values
             numeric_keys = ['trunk_inclination_fb', 'trunk_inclination_lr', 
-                          'shoulder_asymmetry', 'hip_asymmetry', 
-                          'head_tilt', 'head_turn', 'sitting_back_angle']
+                          'shoulder_asymmetry', 'head_tilt', 'head_turn']
             
             for key in numeric_keys:
                 values = [metrics[key] for metrics in list(self.posture_history)[-5:]]
@@ -451,23 +370,18 @@ class PoseHandler:
                 f"Posture Score: {posture['overall_posture_score']:.2f}"
             ]
             
-            if posture['is_sitting']:
-                status_lines.append(f"Sitting: {posture['sitting_back_angle']:.1f}° ({posture['sitting_posture_quality']})")
-            else:
-                status_lines.append("Standing")
-            
             # Draw status text
             y_offset = 140
             for i, line in enumerate(status_lines):
                 cv2.putText(vis_frame, line, (10, y_offset + i * 20), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             
-            # Draw posture quality indicator with more realistic thresholds
+            # Draw posture quality indicator with slightly more permissive thresholds
             score = posture['overall_posture_score']
-            if score > 0.75:  # Lowered from 0.8
+            if score > 0.68:  # Slightly lower than before
                 color = (0, 255, 0)
                 quality_text = "Excellent"
-            elif score > 0.55:  # Lowered from 0.6
+            elif score > 0.48:  # Slightly lower than before
                 color = (0, 255, 255)
                 quality_text = "Good"
             else:
