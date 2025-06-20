@@ -362,20 +362,9 @@ class PoseHandler:
             # Draw key posture information on frame
             posture = pose_info['posture_metrics']
             
-            # Create status text
-            status_lines = [
-                f"Trunk: FB:{posture['trunk_inclination_fb']:+.1f}° LR:{posture['trunk_inclination_lr']:+.1f}°",
-                f"Shoulders: {posture['shoulder_asymmetry']:+.1f}° (Sym:{posture['shoulder_symmetry_score']:.2f})",
-                f"Head: Tilt:{posture['head_tilt']:+.1f}° Turn:{posture['head_turn']:+.1f}°",
-                f"Posture Score: {posture['overall_posture_score']:.2f}"
-            ]
-            
             # Draw status text
             y_offset = 140
-            for i, line in enumerate(status_lines):
-                cv2.putText(vis_frame, line, (10, y_offset + i * 20), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            
+
             # Draw posture quality indicator with slightly more permissive thresholds
             score = posture['overall_posture_score']
             if score > 0.68:  # Slightly lower than before
@@ -389,7 +378,7 @@ class PoseHandler:
                 quality_text = "Needs Improvement"
                 
             cv2.putText(vis_frame, f"Posture: {quality_text}", 
-                       (10, y_offset + len(status_lines) * 20 + 10), 
+                       (10, y_offset * 20 + 10), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
         
         return vis_frame

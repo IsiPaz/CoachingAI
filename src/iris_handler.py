@@ -288,14 +288,30 @@ class IrisHandler:
         
         # Calculate eye metrics
         eye_metrics = self.calculate_eye_metrics()
+
+        # Store eye center coordinates for distance calculation
+        eye_coordinates = {}
         
         # Get iris positions for visualization (solo si los ojos están abiertos)
         left_iris_pos = None
         right_iris_pos = None
+
         if not eyes_closed:
             left_iris_pos = landmarks_array[self.LEFT_IRIS_CENTER].astype(int)
             right_iris_pos = landmarks_array[self.RIGHT_IRIS_CENTER].astype(int)
         
+        if left_iris_pos is not None:
+                    # Use the eye center landmarks for more accurate distance measurement
+                    left_eye_center = (landmarks_array[self.LEFT_EYE_INDICES[0]] + 
+                                    landmarks_array[self.LEFT_EYE_INDICES[3]]) / 2
+                    eye_coordinates['left_eye_center'] = left_eye_center.astype(float)
+                    
+        if right_iris_pos is not None:
+            # Use the eye center landmarks for more accurate distance measurement
+            right_eye_center = (landmarks_array[self.RIGHT_EYE_INDICES[0]] + 
+                            landmarks_array[self.RIGHT_EYE_INDICES[3]]) / 2
+            eye_coordinates['right_eye_center'] = right_eye_center.astype(float)
+
         return {
             # Raw eye aperture values
             "left_eye_aperture": left_ear,
@@ -318,7 +334,10 @@ class IrisHandler:
             "left_iris_position": left_iris_pos,
             "right_iris_position": right_iris_pos,
             "left_eye_landmarks": left_eye_landmarks.astype(int),
-            "right_eye_landmarks": right_eye_landmarks.astype(int)
+            "right_eye_landmarks": right_eye_landmarks.astype(int),
+            
+            # Eye coordinates for distance calculation
+            "eye_coordinates": eye_coordinates
         }
         
     def draw_iris_visualization(self, 

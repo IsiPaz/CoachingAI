@@ -40,6 +40,7 @@ class EmotionLogger:
         self.last_emotion_info = None
         self.last_iris_info = None
         self.last_pose_info = None
+        self.last_distance_info = None
         self.last_device = "unknown"
 
     def set_last_debug_state(self,
@@ -47,12 +48,14 @@ class EmotionLogger:
                             emotion_info: Optional[Dict],
                             iris_info: Optional[Dict],
                             pose_info: Optional[Dict],
+                            distance_info: Optional[Dict],
                             device: str) -> None:
         """Store the latest debug state for screenshot JSON logging."""
         self.last_face_bbox = face_bbox
         self.last_emotion_info = emotion_info
         self.last_iris_info = iris_info
         self.last_pose_info = pose_info
+        self.last_distance_info = distance_info
         self.last_device = device
 
     def update_fps(self) -> None:
@@ -79,6 +82,7 @@ class EmotionLogger:
                         emotion_info: Optional[Dict],
                         iris_info: Optional[Dict],
                         pose_info: Optional[Dict],
+                        distance_info: Optional[Dict],
                         device: str) -> None:
         """
         Print detailed debug information to console.
@@ -87,6 +91,8 @@ class EmotionLogger:
             face_bbox: Face bounding box coordinates
             emotion_info: Processed emotion information
             iris_info: Raw iris tracking information
+            pose_info: Pose tracking information
+            distance_info: Distance measurement information
             device: Device being used for inference
         """
         if not self.debug:
@@ -133,6 +139,25 @@ class EmotionLogger:
         print(f"\nVALENCE-AROUSAL ANALYSIS:")
         print(f"Valence: {valence:+.3f} ({'Positive' if valence > 0 else 'Negative' if valence < 0 else 'Neutral'})")
         print(f"Arousal:  {arousal:+.3f} ({'High' if arousal > 0 else 'Low' if arousal < 0 else 'Neutral'})")
+        
+        # Distance Tracking Raw Values
+        if distance_info is not None:
+            print(f"\n{'='*60}")
+            print(f"CAMERA DISTANCE TRACKING:")
+            print(f"{'='*60}")
+            
+            print(f"\nDISTANCE MEASUREMENTS:")
+            print(f"  Current Distance:       {distance_info['distance_cm']:.1f} cm")
+            print(f"  Raw Distance:           {distance_info['raw_distance_cm']:.1f} cm")
+            print(f"  Measurement Method:     {distance_info['measurement_method'].upper()}")
+            print(f"  Face Size in Frame:     {distance_info['face_size_percentage']:.1f}%")
+            print(f"  Calibrated:             {'Yes' if distance_info['is_calibrated'] else 'No'}")
+            
+            print(f"\nDISTANCE STATUS:")
+            print(f"  Status:                 {distance_info['distance_status']}")
+            print(f"  Quality:                {distance_info['distance_quality'].upper()}")
+            print(f"  Recommendation:         {distance_info['recommendation']}")
+            print(f"  Optimal Range:          {distance_info['optimal_range']}")
         
         # Iris and Eye Tracking Raw Values
         if iris_info is not None:
@@ -286,15 +311,17 @@ class EmotionLogger:
                            frame_bgr: np.ndarray,
                            face_bbox: Optional[np.ndarray] = None,
                            emotion_info: Optional[Dict] = None,
-                           iris_info: Optional[Dict] = None) -> np.ndarray:
+                           iris_info: Optional[Dict] = None,
+                           distance_info: Optional[Dict] = None) -> np.ndarray:
         """
-        Create the final visualization with emotion and iris information.
+        Create the final visualization with emotion, iris, and distance information.
         
         Args:
             frame_bgr: Input frame in BGR format
             face_bbox: Face bounding box coordinates
             emotion_info: Processed emotion information
             iris_info: Raw iris tracking information
+            distance_info: Distance measurement information
             
         Returns:
             Visualization frame
@@ -338,6 +365,23 @@ class EmotionLogger:
                 blended = cv2.addWeighted(overlay_region, 0.3, circumplex_resized, 0.7, 0)
                 vis_frame[y_offset:y_offset+overlay_size, x_offset:x_offset+overlay_size] = blended
         
+        # Draw distance information if available
+        if distance_info is not None:
+            # Get status color
+            color = distance_info['status_color']
+            
+            # Draw distance status bar at top of screen
+            bar_height = 40
+            bar_width = vis_frame.shape[1]
+            overlay = vis_frame[0:bar_height, :].copy()
+            cv2.rectangle(overlay, (0, 0), (bar_width, bar_height), color, -1)
+            vis_frame[0:bar_height, :] = cv2.addWeighted(overlay, 0.3, vis_frame[0:bar_height, :], 0.7, 0)
+            
+            # Draw distance text
+            distance_text = f"Distance: {distance_info['distance_cm']:.0f}cm - {distance_info['distance_status']}"
+            cv2.putText(vis_frame, distance_text, (10, 25), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        
         # Draw iris information if available
         if iris_info is not None:
             # Draw eye aperture values on screen
@@ -359,7 +403,7 @@ class EmotionLogger:
         # Draw FPS counter (only if option enabled)
         if self.show_fps:
             fps_text = f"FPS: {self.current_fps:.1f}"
-            cv2.putText(vis_frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+            cv2.putText(vis_frame, fps_text, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
         
         # Add debug indicator
         if self.debug:
@@ -420,7 +464,8 @@ class EmotionLogger:
             "face_bbox": self.last_face_bbox.tolist() if self.last_face_bbox is not None else None,
             "emotion_info": _convert_numpy_types(self.last_emotion_info) if self.last_emotion_info is not None else None,
             "iris_info": _convert_numpy_types(self.last_iris_info) if self.last_iris_info is not None else None,
-            "pose_info": _convert_numpy_types(self.last_pose_info) if self.last_pose_info is not None else None
+            "pose_info": _convert_numpy_types(self.last_pose_info) if self.last_pose_info is not None else None,
+            "distance_info": _convert_numpy_types(self.last_distance_info) if self.last_distance_info is not None else None
         }
 
         try:
