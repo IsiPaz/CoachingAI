@@ -5,6 +5,7 @@ import torch
 import math
 from typing import Dict, Optional, Tuple, List
 from collections import deque
+import time
 
 
 class HandHandler:
@@ -12,13 +13,16 @@ class HandHandler:
     Handles hand tracking and gesture analysis using MediaPipe Hands.
     Returns comprehensive hand metrics including finger states, gestures,
     hand openness, movement patterns, and non-verbal communication indicators.
+    Includes face interference detection.
     GPU-optimized where possible.
     """
     
     def __init__(self, 
                  device: str = "cuda:0",
                  max_num_hands: int = 2,
-                 history_window_size: int = 30):
+                 history_window_size: int = 30,
+                 face_interference_threshold: float = 0.3,
+                 interference_time_threshold: float = 5.0):
         """
         Initialize the Hand handler.
         
@@ -26,10 +30,14 @@ class HandHandler:
             device: Device to run models on (cuda:0, cpu)
             max_num_hands: Maximum number of hands to detect
             history_window_size: Number of frames to keep in history for smoothing
+            face_interference_threshold: Overlap threshold to consider interference (0-1)
+            interference_time_threshold: Time in seconds before flagging sustained interference
         """
         self.device = device
         self.max_num_hands = max_num_hands
         self.history_window_size = history_window_size
+        self.face_interference_threshold = face_interference_threshold
+        self.interference_time_threshold = interference_time_threshold
         
         # Initialize MediaPipe Hands
         self.mp_hands = mp.solutions.hands
@@ -78,17 +86,199 @@ class HandHandler:
             'right': deque(maxlen=15)
         }
         
+        # Face interference tracking
+        self.face_interference_start_time = None
+        self.is_face_interfered = False
+        self.face_interference_duration = 0.0
+        self.interference_history = deque(maxlen=30)  # Track last second at 30fps
+        
+        # Face bounding box cache
+        self.last_face_bbox = None
+        
         # GPU optimization for calculations if available
         self.use_gpu = device.startswith('cuda') and torch.cuda.is_available()
         if self.use_gpu:
             self.gpu_device = torch.device(device)
+            # Pre-allocate GPU tensors for common operations
+            self.gpu_tensors = {
+                'landmarks': torch.zeros((21, 2), device=self.gpu_device),
+                'face_bbox': torch.zeros(4, device=self.gpu_device),
+                'hand_bbox': torch.zeros(4, device=self.gpu_device)
+            }
         
         print(f"HandHandler initialized on device: {device}")
         print(f"Hand tracking enabled - analyzing up to {max_num_hands} hands")
+        print(f"Face interference detection enabled (threshold: {face_interference_threshold}, time: {interference_time_threshold}s)")
+        
+    def calculate_bbox_overlap(self, bbox1: np.ndarray, bbox2: np.ndarray) -> float:
+        """
+        Calculate Intersection over Union (IoU) between two bounding boxes.
+        GPU-optimized when available.
+        
+        Args:
+            bbox1: First bounding box [x1, y1, x2, y2]
+            bbox2: Second bounding box [x1, y1, x2, y2]
+            
+        Returns:
+            IoU value between 0 and 1
+        """
+        if self.use_gpu:
+            # Convert to GPU tensors
+            bbox1_gpu = torch.from_numpy(bbox1).to(self.gpu_device, dtype=torch.float32)
+            bbox2_gpu = torch.from_numpy(bbox2).to(self.gpu_device, dtype=torch.float32)
+            
+            # Calculate intersection
+            x1 = torch.max(bbox1_gpu[0], bbox2_gpu[0])
+            y1 = torch.max(bbox1_gpu[1], bbox2_gpu[1])
+            x2 = torch.min(bbox1_gpu[2], bbox2_gpu[2])
+            y2 = torch.min(bbox1_gpu[3], bbox2_gpu[3])
+            
+            intersection = torch.clamp(x2 - x1, min=0) * torch.clamp(y2 - y1, min=0)
+            
+            # Calculate areas
+            area1 = (bbox1_gpu[2] - bbox1_gpu[0]) * (bbox1_gpu[3] - bbox1_gpu[1])
+            area2 = (bbox2_gpu[2] - bbox2_gpu[0]) * (bbox2_gpu[3] - bbox2_gpu[1])
+            
+            # Calculate union
+            union = area1 + area2 - intersection
+            
+            # Calculate IoU
+            iou = intersection / (union + 1e-6)
+            
+            return iou.cpu().item()
+        else:
+            # CPU implementation
+            x1 = max(bbox1[0], bbox2[0])
+            y1 = max(bbox1[1], bbox2[1])
+            x2 = min(bbox1[2], bbox2[2])
+            y2 = min(bbox1[3], bbox2[3])
+            
+            intersection = max(0, x2 - x1) * max(0, y2 - y1)
+            area1 = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
+            area2 = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
+            union = area1 + area2 - intersection
+            
+            return intersection / (union + 1e-6)
+    
+    def get_hand_bounding_box(self, landmarks: np.ndarray) -> np.ndarray:
+        """
+        Calculate bounding box for hand landmarks.
+        
+        Args:
+            landmarks: Hand landmarks array
+            
+        Returns:
+            Bounding box [x1, y1, x2, y2]
+        """
+        if self.use_gpu:
+            # GPU implementation
+            landmarks_gpu = torch.from_numpy(landmarks).to(self.gpu_device)
+            min_coords = torch.min(landmarks_gpu, dim=0)[0]
+            max_coords = torch.max(landmarks_gpu, dim=0)[0]
+            
+            # Add padding (10% of size)
+            padding = (max_coords - min_coords) * 0.1
+            bbox = torch.stack([
+                min_coords[0] - padding[0],
+                min_coords[1] - padding[1],
+                max_coords[0] + padding[0],
+                max_coords[1] + padding[1]
+            ])
+            
+            return bbox.cpu().numpy()
+        else:
+            # CPU implementation
+            min_x = np.min(landmarks[:, 0])
+            min_y = np.min(landmarks[:, 1])
+            max_x = np.max(landmarks[:, 0])
+            max_y = np.max(landmarks[:, 1])
+            
+            # Add padding
+            width = max_x - min_x
+            height = max_y - min_y
+            padding_x = width * 0.1
+            padding_y = height * 0.1
+            
+            return np.array([
+                min_x - padding_x,
+                min_y - padding_y,
+                max_x + padding_x,
+                max_y + padding_y
+            ])
+    
+    def check_face_interference(self, hand_landmarks_list: List[np.ndarray], face_bbox: Optional[np.ndarray]) -> Dict:
+        """
+        Check if hands are interfering with the face area.
+        
+        Args:
+            hand_landmarks_list: List of hand landmarks arrays
+            face_bbox: Face bounding box [x1, y1, x2, y2]
+            
+        Returns:
+            Dictionary with interference information
+        """
+        interference_info = {
+            'is_interfering': False,
+            'interference_score': 0.0,
+            'interfering_hands': [],
+            'duration': 0.0,
+            'sustained_interference': False
+        }
+        
+        if face_bbox is None or len(hand_landmarks_list) == 0:
+            # Reset interference tracking if no face
+            self.face_interference_start_time = None
+            self.is_face_interfered = False
+            self.face_interference_duration = 0.0
+            return interference_info
+        
+        # Check each hand for interference
+        max_overlap = 0.0
+        interfering_hands = []
+        
+        for idx, landmarks in enumerate(hand_landmarks_list):
+            hand_bbox = self.get_hand_bounding_box(landmarks)
+            overlap = self.calculate_bbox_overlap(face_bbox, hand_bbox)
+            
+            if overlap > self.face_interference_threshold:
+                interfering_hands.append(idx)
+                max_overlap = max(max_overlap, overlap)
+        
+        # Update interference state
+        current_time = time.time()
+        is_currently_interfering = max_overlap > self.face_interference_threshold
+        
+        if is_currently_interfering:
+            if self.face_interference_start_time is None:
+                # Start tracking interference
+                self.face_interference_start_time = current_time
+            else:
+                # Calculate duration
+                self.face_interference_duration = current_time - self.face_interference_start_time
+        else:
+            # Reset if no interference
+            self.face_interference_start_time = None
+            self.face_interference_duration = 0.0
+        
+        # Check for sustained interference
+        self.is_face_interfered = self.face_interference_duration >= self.interference_time_threshold
+        
+        # Update history
+        self.interference_history.append(is_currently_interfering)
+        
+        # Fill interference info
+        interference_info['is_interfering'] = is_currently_interfering
+        interference_info['interference_score'] = max_overlap
+        interference_info['interfering_hands'] = interfering_hands
+        interference_info['duration'] = self.face_interference_duration
+        interference_info['sustained_interference'] = self.is_face_interfered
+        
+        return interference_info
         
     def calculate_finger_curl(self, landmarks: np.ndarray, finger_idx: int) -> float:
         """
         Calculate how much a finger is curled (0 = straight, 1 = fully curled).
+        GPU-optimized when available.
         
         Args:
             landmarks: Hand landmarks array
@@ -97,38 +287,55 @@ class HandHandler:
         Returns:
             Curl value between 0 and 1
         """
-        if finger_idx == 0:  # Thumb
-            # For thumb, use different logic due to its unique structure
-            base = landmarks[1]  # CMC
-            mid = landmarks[2]   # MCP
-            tip = landmarks[4]   # Tip
+        if self.use_gpu:
+            landmarks_gpu = torch.from_numpy(landmarks).to(self.gpu_device)
             
-            # Calculate angle at MCP joint
+            if finger_idx == 0:  # Thumb
+                base = landmarks_gpu[1]
+                mid = landmarks_gpu[2]
+                tip = landmarks_gpu[4]
+            else:
+                base_idx = 5 + (finger_idx - 1) * 4
+                base = landmarks_gpu[base_idx]
+                mid = landmarks_gpu[base_idx + 1]
+                tip = landmarks_gpu[base_idx + 2]
+            
             v1 = base - mid
             v2 = tip - mid
+            
+            cos_angle = torch.dot(v1, v2) / (torch.norm(v1) * torch.norm(v2) + 1e-6)
+            cos_angle = torch.clamp(cos_angle, -1.0, 1.0)
+            angle_rad = torch.acos(cos_angle)
+            curl = angle_rad / np.pi
+            
+            return curl.cpu().item()
         else:
-            # For other fingers
-            base_idx = 5 + (finger_idx - 1) * 4  # MCP
-            pip_idx = base_idx + 1
-            dip_idx = base_idx + 2
-            tip_idx = base_idx + 3
+            # Original CPU implementation
+            if finger_idx == 0:  # Thumb
+                base = landmarks[1]
+                mid = landmarks[2]
+                tip = landmarks[4]
+                
+                v1 = base - mid
+                v2 = tip - mid
+            else:
+                base_idx = 5 + (finger_idx - 1) * 4
+                pip_idx = base_idx + 1
+                dip_idx = base_idx + 2
+                
+                base = landmarks[base_idx]
+                mid = landmarks[pip_idx]
+                tip = landmarks[dip_idx]
+                
+                v1 = base - mid
+                v2 = tip - mid
             
-            # Calculate angle at PIP joint
-            base = landmarks[base_idx]
-            mid = landmarks[pip_idx]
-            tip = landmarks[dip_idx]
+            cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6)
+            cos_angle = np.clip(cos_angle, -1.0, 1.0)
+            angle_rad = np.arccos(cos_angle)
+            curl = angle_rad / np.pi
             
-            v1 = base - mid
-            v2 = tip - mid
-        
-        # Calculate angle
-        cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6)
-        cos_angle = np.clip(cos_angle, -1.0, 1.0)
-        angle_rad = np.arccos(cos_angle)
-        
-        # Normalize to 0-1 range (0 = straight, 1 = curled)
-        curl = angle_rad / np.pi
-        return curl
+            return curl
     
     def calculate_hand_openness(self, landmarks: np.ndarray) -> float:
         """
@@ -398,6 +605,13 @@ class HandHandler:
             'recommendations': []
         }
         
+        # Check for face interference
+        if self.is_face_interfered:
+            quality_assessment['appropriateness'] = 0.2
+            quality_assessment['recommendations'].append("Avoid covering face with hands for extended periods")
+        else:
+            quality_assessment['appropriateness'] = 0.8
+        
         # Assess clarity (clear gestures vs ambiguous movements)
         if hand_metrics.get('gesture_confidence', 0) > 0.7:
             quality_assessment['clarity'] = 0.9
@@ -416,11 +630,9 @@ class HandHandler:
             quality_assessment['expressiveness'] = 0.6
             quality_assessment['recommendations'].append("Reduce excessive hand movements")
         
-        # Assess appropriateness (based on gesture types and context)
-        if hand_metrics.get('hands_in_frame', False):
-            quality_assessment['appropriateness'] = 0.8
-        else:
-            quality_assessment['appropriateness'] = 0.5
+        # Additional check for hands in frame
+        if not hand_metrics.get('hands_in_frame', True):
+            quality_assessment['appropriateness'] = min(quality_assessment['appropriateness'], 0.5)
             quality_assessment['recommendations'].append("Keep hands visible during communication")
         
         # Calculate overall score
@@ -432,27 +644,45 @@ class HandHandler:
         
         return quality_assessment
     
-    def process_frame(self, frame_rgb: np.ndarray) -> Optional[Dict]:
+    def process_frame(self, frame_rgb: np.ndarray, face_bbox: Optional[np.ndarray] = None) -> Optional[Dict]:
         """
         Process a single frame for hand tracking and gesture analysis.
         
         Args:
             frame_rgb: Input frame in RGB format
+            face_bbox: Face bounding box [x1, y1, x2, y2] for interference detection
             
         Returns:
             Dictionary containing comprehensive hand metrics or None if no hands detected
         """
+        # Update face bbox cache
+        if face_bbox is not None:
+            self.last_face_bbox = face_bbox
+        
         # Run MediaPipe hand detection
         results = self.hands.process(frame_rgb)
         
         if not results.multi_hand_landmarks:
             # Update history to reflect no hands
             self.prev_hand_centers = {'left': None, 'right': None}
+            
+            # Reset face interference if no hands
+            self.face_interference_start_time = None
+            self.is_face_interfered = False
+            self.face_interference_duration = 0.0
+            
             return {
                 'hands_detected': False,
                 'hands_in_frame': False,
                 'num_hands': 0,
-                'hand_metrics': {}
+                'hand_metrics': {},
+                'face_interference': {
+                    'is_interfering': False,
+                    'interference_score': 0.0,
+                    'interfering_hands': [],
+                    'duration': 0.0,
+                    'sustained_interference': False
+                }
             }
         
         # Process detected hands
@@ -468,6 +698,9 @@ class HandHandler:
             'handedness': results.multi_handedness
         }
         
+        # Collect landmarks for interference detection
+        hand_landmarks_list = []
+        
         for idx, (hand_landmarks, handedness) in enumerate(zip(results.multi_hand_landmarks, 
                                                                results.multi_handedness)):
             # Determine hand side
@@ -476,6 +709,7 @@ class HandHandler:
             # Convert landmarks to numpy array
             landmarks_array = np.array([(lm.x * w, lm.y * h) for lm in hand_landmarks.landmark])
             hands_info['raw_landmarks'][hand_label] = landmarks_array
+            hand_landmarks_list.append(landmarks_array)
             
             # Calculate hand center
             hand_center = np.mean(landmarks_array, axis=0)
@@ -527,11 +761,16 @@ class HandHandler:
                 'gestures_detected': gestures_detected,
                 'finger_states': finger_states,
                 'hand_center': hand_center.tolist(),
-                'is_dominant': idx == 0  # First detected hand is usually dominant
+                'is_dominant': idx == 0,  # First detected hand is usually dominant
+                'hands_in_frame': True
             }
             
             # Add to history
             self.hand_history[hand_label].append(hand_metrics[hand_label])
+        
+        # Check face interference
+        face_interference_info = self.check_face_interference(hand_landmarks_list, self.last_face_bbox)
+        hands_info['face_interference'] = face_interference_info
         
         # Calculate symmetry if both hands detected
         if 'left' in hand_metrics and 'right' in hand_metrics:
@@ -547,6 +786,7 @@ class HandHandler:
         if hand_metrics:
             # Use dominant hand or first available hand
             dominant_hand = next(iter(hand_metrics.values()))
+            dominant_hand['hands_in_frame'] = True
             hands_info['communication_quality'] = self.analyze_communication_quality(dominant_hand)
         
         hands_info['hand_metrics'] = hand_metrics
@@ -572,6 +812,28 @@ class HandHandler:
         
         if not hand_info['hands_detected']:
             return vis_frame
+        
+        # Draw face interference warning if active
+        if hand_info['face_interference']['sustained_interference']:
+            # Draw warning banner
+            warning_text = "WARNING: FACE COVERED BY HANDS"
+            text_size = cv2.getTextSize(warning_text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
+            
+            # Draw red warning banner at top
+            cv2.rectangle(vis_frame, 
+                         (vis_frame.shape[1]//2 - text_size[0]//2 - 20, 50),
+                         (vis_frame.shape[1]//2 + text_size[0]//2 + 20, 100),
+                         (0, 0, 255), -1)
+            
+            cv2.putText(vis_frame, warning_text,
+                       (vis_frame.shape[1]//2 - text_size[0]//2, 85),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
+            
+            # Draw duration
+            duration_text = f"Duration: {hand_info['face_interference']['duration']:.1f}s"
+            cv2.putText(vis_frame, duration_text,
+                       (vis_frame.shape[1]//2 - 80, 120),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
         
         # Draw hand landmarks and connections
         if debug and 'hand_landmarks' in hand_info:
@@ -610,5 +872,13 @@ class HandHandler:
                     cv2.putText(vis_frame, f"Open: {openness:.2f}",
                                (wrist_x - 50, wrist_y + 50),
                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, openness_color, 2)
+        
+        # Draw face interference indicator
+        if hand_info['face_interference']['is_interfering'] and not hand_info['face_interference']['sustained_interference']:
+            # Yellow warning for temporary interference
+            interference_text = f"Face interference: {hand_info['face_interference']['interference_score']:.2f}"
+            cv2.putText(vis_frame, interference_text,
+                       (10, vis_frame.shape[0] - 40),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
         
         return vis_frame

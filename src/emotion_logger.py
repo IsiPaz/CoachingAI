@@ -246,6 +246,32 @@ class EmotionLogger:
             print(f"\n  OVERALL POSTURE:")
             print(f"    Overall Alignment: {posture['overall_posture_score']:.3f}")
 
+        # Face interference tracking
+        if 'face_interference' in hand_info:
+            interference = hand_info['face_interference']
+            print(f"\nFACE INTERFERENCE DETECTION:")
+            print(f"  Currently Interfering:  {'YES' if interference['is_interfering'] else 'NO'}")
+            print(f"  Interference Score:     {interference['interference_score']:.3f}")
+            print(f"  Duration:               {interference['duration']:.1f} seconds")
+            print(f"  Sustained (>5s):        {'YES - FACE COVERED!' if interference['sustained_interference'] else 'NO'}")
+            
+            if interference['interfering_hands']:
+                print(f"  Interfering Hands:      {', '.join(map(str, interference['interfering_hands']))}")
+        
+        # Communication quality assessment
+        if 'communication_quality' in hand_info:
+            quality = hand_info['communication_quality']
+            print(f"\nNON-VERBAL COMMUNICATION QUALITY:")
+            print(f"  Overall Score:      {quality['overall_score']:.3f}")
+            print(f"  Clarity:            {quality['clarity']:.3f}")
+            print(f"  Expressiveness:     {quality['expressiveness']:.3f}")
+            print(f"  Appropriateness:    {quality['appropriateness']:.3f}")
+            
+            if quality['recommendations']:
+                print(f"\n  Recommendations:")
+                for rec in quality['recommendations']:
+                    print(f"    • {rec}")
+
         # Hand Tracking and Gesture Analysis
         if hand_info is not None and hand_info['hands_detected']:
             print(f"\n{'='*60}")
@@ -290,11 +316,6 @@ class EmotionLogger:
                 print(f"  Clarity:            {quality['clarity']:.3f}")
                 print(f"  Expressiveness:     {quality['expressiveness']:.3f}")
                 print(f"  Appropriateness:    {quality['appropriateness']:.3f}")
-                
-                if quality['recommendations']:
-                    print(f"\n  Recommendations:")
-                    for rec in quality['recommendations']:
-                        print(f"    • {rec}")
 
         # Emotional quadrant
         quadrant = self._get_emotional_quadrant(valence, arousal)
@@ -430,28 +451,27 @@ class EmotionLogger:
         
         # Draw distance information if available
         if distance_info is not None:
-            # Get status color
-            color = distance_info['status_color']
-            
-            # Draw distance status bar at top of screen
-            bar_height = 40
-            bar_width = vis_frame.shape[1]
-            overlay = vis_frame[0:bar_height, :].copy()
-            cv2.rectangle(overlay, (0, 0), (bar_width, bar_height), color, -1)
-            vis_frame[0:bar_height, :] = cv2.addWeighted(overlay, 0.3, vis_frame[0:bar_height, :], 0.7, 0)
-            
-            # Draw distance text
             distance_text = f"Distance: {distance_info['distance_cm']:.0f}cm - {distance_info['distance_status']}"
-            cv2.putText(vis_frame, distance_text, (10, 25), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-        
+            font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+            (text_w, text_h), _ = cv2.getTextSize(distance_text, font, scale, thickness)
+            x, y = 10, 25
+
+            # Draw white background rectangle
+            cv2.rectangle(vis_frame, (x - 5, y - text_h - 5), (x + text_w + 5, y + 5), (255, 255, 255), -1)
+            # Draw colored text on top
+            cv2.putText(vis_frame, distance_text, (x, y), font, scale, distance_info['status_color'], thickness)
+
+                    
         # Draw iris information if available
         if iris_info is not None:           
             # Draw blink count
             blink_text = f"Blinks: {iris_info['total_blinks']}"
-            cv2.putText(vis_frame, blink_text, (10, vis_frame.shape[0] - 100), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-        
+            f, s, t = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+            (w, h), _ = cv2.getTextSize(blink_text, f, s, t)
+            org = (10, 100 + 15 + h)
+            cv2.rectangle(vis_frame, (org[0]-5, org[1]-h-5), (org[0]+w+5, org[1]+5), (255,255,255), -1)
+            cv2.putText(vis_frame, blink_text, org, f, s, (0,0,0), t)
+                    
         # Draw hand information if available
         if hand_info is not None and hand_info['hands_detected']:
             # Draw hand status on right side
@@ -487,18 +507,33 @@ class EmotionLogger:
         # Draw FPS counter (only if option enabled)
         if self.show_fps:
             fps_text = f"FPS: {self.current_fps:.1f}"
-            cv2.putText(vis_frame, fps_text, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+            (text_w, text_h), _ = cv2.getTextSize(fps_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+            cv2.rectangle(vis_frame, (10 - 5, 65 - text_h - 5), (10 + text_w + 5, 65 + 5), (255, 255, 255), -1)
+            cv2.putText(vis_frame, fps_text, (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+
+
 
         if self.debug and pose_info is not None:
             orientation = pose_info['posture_metrics'].get("orientation", "Unknown")
-            cv2.putText(vis_frame, f"Orientation: {orientation}", 
-                        (10, vis_frame.shape[0] - 80), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            f, s, t = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+            blink_h = cv2.getTextSize(f"Blinks: {iris_info['total_blinks']}", f, s, t)[0][1]
+            org = (10, 100 + 15 + blink_h + 17 + blink_h)
+
+            # Force color: green if frontal, else red (any other case)
+            color = (0, 255, 0) if orientation.lower() == "frontal" else (0, 0, 255)
+
+            (w, h), _ = cv2.getTextSize(f"Orientation: {orientation}", f, s, t)
+            cv2.rectangle(vis_frame, (org[0]-5, org[1]-h-5), (org[0]+w+5, org[1]+5), (255,255,255), -1)
+            cv2.putText(vis_frame, f"Orientation: {orientation}", org, f, s, color, t)
 
         # Add debug indicator
         if self.debug:
-            cv2.putText(vis_frame, "DEBUG MODE", (10, vis_frame.shape[0] - 20), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            text = "DEBUG MODE"; f, s, t = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+            (w, h), _ = cv2.getTextSize(text, f, s, t)
+            org = (vis_frame.shape[1] - w - 10, 10 + h)
+            cv2.rectangle(vis_frame, (org[0]-5, org[1]-h-5), (org[0]+w+5, org[1]+5), (255,255,255), -1)
+            cv2.putText(vis_frame, text, org, f, s, (255,0,0), t)
+
         
         return vis_frame
         

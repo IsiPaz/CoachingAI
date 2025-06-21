@@ -130,7 +130,8 @@ class VideoStream:
                         pose_info = self.last_results.get('pose_info')
                 
                 # Process hands every frame (important for gesture recognition)
-                hand_info = self.hand_handler.process_frame(frame_rgb)
+                # Pass face bbox for interference detection
+                hand_info = self.hand_handler.process_frame(frame_rgb, face_bbox)
                 
                 # Update last results
                 if face_bbox is not None:
