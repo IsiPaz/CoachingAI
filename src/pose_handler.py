@@ -320,26 +320,23 @@ class PoseHandler:
         
         # Only draw if debug is enabled
         if debug and pose_info['pose_detected']:
-            # Draw ONLY body pose landmarks and connections (exclude face)
-            # Create custom connections excluding facial connections
+            # Draw ONLY upper body landmarks and connections (exclude face and legs)
+            # Create custom connections for upper body only
             body_connections = [
-                # Torso
+                # Torso (only shoulder to hip connections)
                 (11, 12), (11, 23), (12, 24), (23, 24),
                 # Left arm
                 (11, 13), (13, 15), (15, 17), (15, 19), (15, 21),
                 (17, 19), (19, 21),
                 # Right arm  
                 (12, 14), (14, 16), (16, 18), (16, 20), (16, 22),
-                (18, 20), (20, 22),
-                # Left leg
-                (23, 25), (25, 27), (27, 29), (27, 31), (29, 31),
-                # Right leg
-                (24, 26), (26, 28), (28, 30), (28, 32), (30, 32)
+                (18, 20), (20, 22)
+                # Removed all leg connections
             ]
             
-            # Draw only body landmarks (exclude face landmarks 0-10)
+            # Draw only upper body landmarks (11-24, excluding leg landmarks 25-32)
             landmarks = pose_info['pose_landmarks'].landmark
-            for i in range(11, len(landmarks)):  # Start from shoulder landmarks
+            for i in range(11, 25):  # Only draw from shoulders to hips
                 if landmarks[i].visibility > 0.5:
                     x = int(landmarks[i].x * vis_frame.shape[1])
                     y = int(landmarks[i].y * vis_frame.shape[0])
