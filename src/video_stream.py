@@ -9,6 +9,7 @@ from emonet_handler import EmoNetHandler
 from emotion_logger import EmotionLogger
 from iris_handler import IrisHandler
 from distance_handler import DistanceHandler
+from hand_handler import HandHandler
 
 
 class VideoStream:
@@ -41,6 +42,7 @@ class VideoStream:
         self.iris_handler = IrisHandler(device=emonet_handler.device)
         self.pose_handler = PoseHandler(device=emonet_handler.device)
         self.distance_handler = DistanceHandler(device=emonet_handler.device)
+        self.hand_handler = HandHandler(device=emonet_handler.device)
         
         # Optimized queues - smaller buffers for real-time processing
         self.frame_queue = queue.Queue(maxsize=1)  # Reduced buffer
@@ -61,7 +63,8 @@ class VideoStream:
             'emotion_info': None,
             'iris_info': None,
             'pose_info': None,
-            'distance_info': None
+            'distance_info': None,
+            'hand_info': None
         }
         
         # Camera setup
@@ -108,6 +111,7 @@ class VideoStream:
                 iris_info = None
                 pose_info = None
                 distance_info = None
+                hand_info = None
                 
                 if face_bbox is not None:
                     # Process iris every frame (lightweight)
@@ -125,6 +129,9 @@ class VideoStream:
                         # Use last pose result for smoother display
                         pose_info = self.last_results.get('pose_info')
                 
+                # Process hands every frame (important for gesture recognition)
+                hand_info = self.hand_handler.process_frame(frame_rgb)
+                
                 # Update last results
                 if face_bbox is not None:
                     self.last_results['face_bbox'] = face_bbox
@@ -136,6 +143,8 @@ class VideoStream:
                     self.last_results['pose_info'] = pose_info
                 if distance_info is not None:
                     self.last_results['distance_info'] = distance_info
+                if hand_info is not None:
+                    self.last_results['hand_info'] = hand_info
                 
                 # Put result in queue (drop old frames for real-time processing)
                 try:
@@ -145,7 +154,8 @@ class VideoStream:
                         self.last_results['emotion_info'], 
                         self.last_results['iris_info'], 
                         self.last_results['pose_info'],
-                        self.last_results['distance_info']
+                        self.last_results['distance_info'],
+                        self.last_results['hand_info']
                     ))
                 except queue.Full:
                     # Drop old result and put new one
@@ -157,7 +167,8 @@ class VideoStream:
                             self.last_results['emotion_info'], 
                             self.last_results['iris_info'], 
                             self.last_results['pose_info'],
-                            self.last_results['distance_info']
+                            self.last_results['distance_info'],
+                            self.last_results['hand_info']
                         ))
                     except queue.Empty:
                         pass
@@ -219,9 +230,10 @@ class VideoStream:
                 iris_info = None
                 pose_info = None
                 distance_info = None
+                hand_info = None
                 
                 try:
-                    processed_frame, face_bbox, emotion_info, iris_info, pose_info, distance_info = self.result_queue.get_nowait()
+                    processed_frame, face_bbox, emotion_info, iris_info, pose_info, distance_info, hand_info = self.result_queue.get_nowait()
                     display_frame = processed_frame
                 except queue.Empty:
                     # Use original frame with last known results for smooth display
@@ -230,10 +242,11 @@ class VideoStream:
                     iris_info = self.last_results.get('iris_info')
                     pose_info = self.last_results.get('pose_info')
                     distance_info = self.last_results.get('distance_info')
+                    hand_info = self.last_results.get('hand_info')
                 
                 # Print debug info only occasionally to avoid performance hit
                 if self.logger.debug and self.frame_counter % 10 == 0:
-                    self.logger.print_debug_info(face_bbox, emotion_info, iris_info, pose_info, distance_info, self.emonet_handler.device)
+                    self.logger.print_debug_info(face_bbox, emotion_info, iris_info, pose_info, distance_info, hand_info, self.emonet_handler.device)
                 
                 # Apply visualizations
                 if iris_info is not None:
@@ -241,9 +254,12 @@ class VideoStream:
                 
                 if pose_info is not None:
                     display_frame = self.pose_handler.draw_pose_visualization(display_frame, pose_info, self.logger.debug)
+                
+                if hand_info is not None:
+                    display_frame = self.hand_handler.draw_hand_visualization(display_frame, hand_info, self.logger.debug)
                             
                 # Create emotion visualization (lightweight)
-                display_frame = self.logger.create_visualization(display_frame, face_bbox, emotion_info, iris_info, distance_info, pose_info)
+                display_frame = self.logger.create_visualization(display_frame, face_bbox, emotion_info, iris_info, distance_info, pose_info, hand_info)
 
                 
                 # Display frame
@@ -254,7 +270,7 @@ class VideoStream:
                 if key == ord('q'):
                     break
                 elif key == ord('s'):
-                    self.logger.set_last_debug_state(face_bbox, emotion_info, iris_info, pose_info, distance_info, self.emonet_handler.device)
+                    self.logger.set_last_debug_state(face_bbox, emotion_info, iris_info, pose_info, distance_info, hand_info, self.emonet_handler.device)
                     self.logger.save_screenshot(display_frame)
                 elif key == ord('d') and self.logger.debug:
                     self.logger.toggle_debug_interval()

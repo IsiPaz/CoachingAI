@@ -372,14 +372,25 @@ class IrisHandler:
                 if iris_info["right_iris_position"] is not None:
                     cv2.circle(vis_frame, tuple(iris_info["right_iris_position"]), 4, (255, 0, 0), -1)
             
-            # Draw eye aperture values y estado de los ojos
-            aperture_text = f"L: {iris_info['left_eye_aperture']:.3f} R: {iris_info['right_eye_aperture']:.3f}"
+            # Open or close eyes
             status_text = f"Eyes: {'CLOSED' if iris_info['eyes_closed'] else 'OPEN'}"
-            
-            cv2.putText(vis_frame, aperture_text,
-                       (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-            cv2.putText(vis_frame, status_text,
-                       (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, 
-                       (0, 0, 255) if iris_info['eyes_closed'] else (0, 255, 0), 2)
+        
+            text = status_text
+            org = (10, 110)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.6
+            thickness = 2
+            color = (0, 0, 255) if iris_info['eyes_closed'] else (0, 255, 0)
+
+            # Calculate size of text
+            (text_w, text_h), _ = cv2.getTextSize(text, font, font_scale, thickness)
+
+            # Draw white background
+            cv2.rectangle(vis_frame, (org[0] - 5, org[1] - text_h - 5), 
+                        (org[0] + text_w + 5, org[1] + 5), (255, 255, 255), -1)
+
+            # Put text
+            cv2.putText(vis_frame, text, org, font, font_scale, color, thickness)
+
             
         return vis_frame

@@ -41,6 +41,7 @@ class EmotionLogger:
         self.last_iris_info = None
         self.last_pose_info = None
         self.last_distance_info = None
+        self.last_hand_info = None
         self.last_device = "unknown"
 
     def set_last_debug_state(self,
@@ -49,6 +50,7 @@ class EmotionLogger:
                             iris_info: Optional[Dict],
                             pose_info: Optional[Dict],
                             distance_info: Optional[Dict],
+                            hand_info: Optional[Dict],
                             device: str) -> None:
         """Store the latest debug state for screenshot JSON logging."""
         self.last_face_bbox = face_bbox
@@ -56,6 +58,7 @@ class EmotionLogger:
         self.last_iris_info = iris_info
         self.last_pose_info = pose_info
         self.last_distance_info = distance_info
+        self.last_hand_info = hand_info
         self.last_device = device
 
     def update_fps(self) -> None:
@@ -83,6 +86,7 @@ class EmotionLogger:
                         iris_info: Optional[Dict],
                         pose_info: Optional[Dict],
                         distance_info: Optional[Dict],
+                        hand_info: Optional[Dict],
                         device: str) -> None:
         """
         Print detailed debug information to console.
@@ -93,6 +97,7 @@ class EmotionLogger:
             iris_info: Raw iris tracking information
             pose_info: Pose tracking information
             distance_info: Distance measurement information
+            hand_info: Hand tracking information
             device: Device being used for inference
         """
         if not self.debug:
@@ -241,6 +246,56 @@ class EmotionLogger:
             print(f"\n  OVERALL POSTURE:")
             print(f"    Overall Alignment: {posture['overall_posture_score']:.3f}")
 
+        # Hand Tracking and Gesture Analysis
+        if hand_info is not None and hand_info['hands_detected']:
+            print(f"\n{'='*60}")
+            print(f"HAND TRACKING AND GESTURE ANALYSIS:")
+            print(f"{'='*60}")
+            
+            print(f"\nHAND DETECTION:")
+            print(f"  Hands Detected:     {hand_info['num_hands']}")
+            print(f"  Hands in Frame:     {'Yes' if hand_info['hands_in_frame'] else 'No'}")
+            
+            if hand_info.get('hand_symmetry') is not None:
+                print(f"  Hand Symmetry:      {hand_info['hand_symmetry']:.3f}")
+            
+            # Print metrics for each detected hand
+            for hand_side, metrics in hand_info['hand_metrics'].items():
+                print(f"\n{hand_side.upper()} HAND METRICS:")
+                print(f"  Hand Openness:      {metrics['openness']:.3f} (0=fist, 1=open)")
+                print(f"  Finger Spread:      {metrics['finger_spread']:.3f}")
+                print(f"  Movement Velocity:  {metrics['velocity']:.4f}")
+                print(f"  Gesticulation:      {metrics['gesticulation_intensity']:.3f} (0=still, 1=high)")
+                print(f"  Gesture Phase:      {metrics['gesture_phase']}")
+                print(f"  Primary Gesture:    {metrics['primary_gesture'].upper()}")
+                print(f"  Gesture Confidence: {metrics['gesture_confidence']:.3f}")
+                
+                # Print detected gestures
+                print(f"\n  Gesture Detection:")
+                for gesture, detected in metrics['gestures_detected'].items():
+                    if detected:
+                        print(f"    ✓ {gesture}")
+                
+                # Print finger states
+                print(f"\n  Finger States:")
+                for finger, state in metrics['finger_states'].items():
+                    status = "Extended" if state['extended'] else "Curled"
+                    print(f"    {finger.capitalize():>6}: {status} (curl: {state['curl']:.3f})")
+            
+            # Communication quality assessment
+            if 'communication_quality' in hand_info:
+                quality = hand_info['communication_quality']
+                print(f"\nNON-VERBAL COMMUNICATION QUALITY:")
+                print(f"  Overall Score:      {quality['overall_score']:.3f}")
+                print(f"  Clarity:            {quality['clarity']:.3f}")
+                print(f"  Expressiveness:     {quality['expressiveness']:.3f}")
+                print(f"  Appropriateness:    {quality['appropriateness']:.3f}")
+                
+                if quality['recommendations']:
+                    print(f"\n  Recommendations:")
+                    for rec in quality['recommendations']:
+                        print(f"    • {rec}")
+
         # Emotional quadrant
         quadrant = self._get_emotional_quadrant(valence, arousal)
         print(f"\nEmotional quadrant: {quadrant}")
@@ -316,10 +371,11 @@ class EmotionLogger:
                             emotion_info: Optional[Dict] = None,
                             iris_info: Optional[Dict] = None,
                             distance_info: Optional[Dict] = None,
-                            pose_info: Optional[Dict] = None) -> np.ndarray:
+                            pose_info: Optional[Dict] = None,
+                            hand_info: Optional[Dict] = None) -> np.ndarray:
 
         """
-        Create the final visualization with emotion, iris, and distance information.
+        Create the final visualization with emotion, iris, distance, and hand information.
         
         Args:
             frame_bgr: Input frame in BGR format
@@ -327,6 +383,8 @@ class EmotionLogger:
             emotion_info: Processed emotion information
             iris_info: Raw iris tracking information
             distance_info: Distance measurement information
+            pose_info: Pose tracking information
+            hand_info: Hand tracking information
             
         Returns:
             Visualization frame
@@ -388,22 +446,43 @@ class EmotionLogger:
                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         
         # Draw iris information if available
-        if iris_info is not None:
-            # Draw eye aperture values on screen
-            aperture_text = f"Eye Aperture - L: {iris_info['left_eye_aperture']:.3f} R: {iris_info['right_eye_aperture']:.3f}"
-            cv2.putText(vis_frame, aperture_text, (10, vis_frame.shape[0] - 80), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-            
-            # Draw iris centering value
-            centering = iris_info['iris_position']['average_centering']
-            centering_text = f"Iris Centering: {centering:.3f}"
-            cv2.putText(vis_frame, centering_text, (10, vis_frame.shape[0] - 60), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-            
+        if iris_info is not None:           
             # Draw blink count
             blink_text = f"Blinks: {iris_info['total_blinks']}"
-            cv2.putText(vis_frame, blink_text, (10, vis_frame.shape[0] - 40), 
+            cv2.putText(vis_frame, blink_text, (10, vis_frame.shape[0] - 100), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        
+        # Draw hand information if available
+        if hand_info is not None and hand_info['hands_detected']:
+            # Draw hand status on right side
+            y_offset = 60
+            x_offset = vis_frame.shape[1] - 300
+            
+            hand_text = f"Hands: {hand_info['num_hands']}"
+            cv2.putText(vis_frame, hand_text, (x_offset, y_offset), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            
+            # Draw metrics for each hand
+            for idx, (hand_side, metrics) in enumerate(hand_info['hand_metrics'].items()):
+                y_pos = y_offset + 25 + (idx * 60)
+                
+                # Hand side and gesture
+                gesture_text = f"{hand_side.title()}: {metrics['primary_gesture']}"
+                cv2.putText(vis_frame, gesture_text, (x_offset, y_pos), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+                
+                # Openness and gesticulation
+                metrics_text = f"Open: {metrics['openness']:.2f} | Gest: {metrics['gesticulation_intensity']:.2f}"
+                cv2.putText(vis_frame, metrics_text, (x_offset, y_pos + 20), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+            
+            # Draw communication quality if both hands visible
+            if 'communication_quality' in hand_info:
+                quality = hand_info['communication_quality']
+                quality_text = f"Comm Quality: {quality['overall_score']:.2f}"
+                quality_color = (0, 255, 0) if quality['overall_score'] > 0.7 else (0, 255, 255) if quality['overall_score'] > 0.4 else (0, 0, 255)
+                cv2.putText(vis_frame, quality_text, (x_offset, y_offset + 120), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, quality_color, 2)
         
         # Draw FPS counter (only if option enabled)
         if self.show_fps:
@@ -413,7 +492,7 @@ class EmotionLogger:
         if self.debug and pose_info is not None:
             orientation = pose_info['posture_metrics'].get("orientation", "Unknown")
             cv2.putText(vis_frame, f"Orientation: {orientation}", 
-                        (10, vis_frame.shape[0] - 100), 
+                        (10, vis_frame.shape[0] - 80), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
         # Add debug indicator
@@ -476,7 +555,8 @@ class EmotionLogger:
             "emotion_info": _convert_numpy_types(self.last_emotion_info) if self.last_emotion_info is not None else None,
             "iris_info": _convert_numpy_types(self.last_iris_info) if self.last_iris_info is not None else None,
             "pose_info": _convert_numpy_types(self.last_pose_info) if self.last_pose_info is not None else None,
-            "distance_info": _convert_numpy_types(self.last_distance_info) if self.last_distance_info is not None else None
+            "distance_info": _convert_numpy_types(self.last_distance_info) if self.last_distance_info is not None else None,
+            "hand_info": _convert_numpy_types(self.last_hand_info) if self.last_hand_info is not None else None
         }
 
         try:
