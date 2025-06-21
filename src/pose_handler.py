@@ -127,7 +127,7 @@ class PoseHandler:
         
         return fb_angle, lr_angle
     
-    def calculate_shoulder_symmetry(self, landmarks: np.ndarray) -> Tuple[float, float]:
+    def calculate_shoulder_symmetry(self, landmarks: np.ndarray) -> Tuple[float, float, str]:
         """
         Calculate shoulder symmetry and asymmetry with more realistic thresholds.
         
@@ -135,7 +135,7 @@ class PoseHandler:
             landmarks: Pose landmarks array
             
         Returns:
-            Tuple of (asymmetry_angle, symmetry_score)
+            Tuple of (asymmetry_angle, symmetry_score, status)
         """
         left_shoulder = landmarks[self.POSE_LANDMARKS['left_shoulder']]
         right_shoulder = landmarks[self.POSE_LANDMARKS['right_shoulder']]
@@ -148,15 +148,17 @@ class PoseHandler:
         asymmetry_angle = np.degrees(np.arctan2(height_diff, shoulder_width))
         
         # More realistic symmetry score - up to 8° difference is still good
-        max_reasonable_angle = 20.0  # Increased from 15.0
-        good_threshold = 8.0  # Perfect range
+        max_reasonable_angle = 15.0
+        good_threshold = 5.0
         
         if abs(asymmetry_angle) <= good_threshold:
             symmetry_score = 1.0
+            status = "Correct"
         else:
             symmetry_score = max(0.3, 1.0 - abs(asymmetry_angle) / max_reasonable_angle)
+            status = "Incorrect"
         
-        return asymmetry_angle, symmetry_score
+        return asymmetry_angle, symmetry_score, status
     
     def calculate_head_orientation(self, landmarks: np.ndarray) -> Tuple[float, float]:
         """
@@ -229,13 +231,12 @@ class PoseHandler:
         else:
             posture_metrics["orientation"] = "Frontal"
         
-        # Good range: 0-20°, Fair: 20-38°, Poor: >38°
-        if head_tilt <= 20 and head_turn <= 20:
+        if head_tilt <= 10 and head_turn <= 10:  
             head_score = 1.0
-        elif head_tilt <= 38 and head_turn <= 38:
-            head_score = max(0.6, 1.0 - (head_tilt + head_turn) / 76.0)
+        elif head_tilt <= 20 and head_turn <= 20:  
+            head_score = max(0.5, 1.0 - (head_tilt + head_turn) / 40.0) 
         else:
-            head_score = max(0.2, 1.0 - (head_tilt + head_turn) / 110.0)
+            head_score = max(0.1, 1.0 - (head_tilt + head_turn) / 60.0)  
         scores.append(head_score)
         
         # Calculate weighted average with small boost
@@ -270,7 +271,7 @@ class PoseHandler:
         
         # Calculate all posture metrics
         trunk_fb, trunk_lr = self.calculate_trunk_inclination(landmarks_array)
-        shoulder_asym, shoulder_sym = self.calculate_shoulder_symmetry(landmarks_array)
+        shoulder_asym, shoulder_sym, shoulder_status = self.calculate_shoulder_symmetry(landmarks_array)
         head_tilt, head_turn = self.calculate_head_orientation(landmarks_array)
         
         # Create posture metrics dictionary
@@ -279,6 +280,7 @@ class PoseHandler:
             'trunk_inclination_lr': trunk_lr,
             'shoulder_asymmetry': shoulder_asym,
             'shoulder_symmetry_score': shoulder_sym,
+            'shoulder_symmetry_status': shoulder_status,
             'head_tilt': head_tilt,
             'head_turn': head_turn,
         }

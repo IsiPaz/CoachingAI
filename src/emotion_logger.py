@@ -235,7 +235,8 @@ class EmotionLogger:
             print(f"\n  Shoulder Symmetry:")
             print(f"    Height Difference: {posture['shoulder_asymmetry']:+.2f}° ({'Right Higher' if posture['shoulder_asymmetry'] > 0 else 'Left Higher' if posture['shoulder_asymmetry'] < 0 else 'Level'})")
             print(f"    Symmetry Score:    {posture['shoulder_symmetry_score']:.3f} (1.0=perfect)")
-            
+            print(f"    Symmetry Status:    {posture['shoulder_symmetry_status']} {'✓' if posture['shoulder_symmetry_status'] == 'Correct' else '✗'}")
+
             print(f"\n  Head Orientation:")
             print(f"    Head Tilt:         {posture['head_tilt']:+.2f}° ({'Right' if posture['head_tilt'] > 0 else 'Left' if posture['head_tilt'] < 0 else 'Neutral'})")
             print(f"    Head Turn:         {posture['head_turn']:+.2f}° ({'Right' if posture['head_turn'] > 0 else 'Left' if posture['head_turn'] < 0 else 'Forward'})")
@@ -512,7 +513,6 @@ class EmotionLogger:
             cv2.putText(vis_frame, fps_text, (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
 
 
-
         if self.debug and pose_info is not None:
             orientation = pose_info['posture_metrics'].get("orientation", "Unknown")
             f, s, t = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
@@ -525,6 +525,49 @@ class EmotionLogger:
             (w, h), _ = cv2.getTextSize(f"Orientation: {orientation}", f, s, t)
             cv2.rectangle(vis_frame, (org[0]-5, org[1]-h-5), (org[0]+w+5, org[1]+5), (255,255,255), -1)
             cv2.putText(vis_frame, f"Orientation: {orientation}", org, f, s, color, t)
+
+            # Shoulders
+            shoulder_status = pose_info['posture_metrics'].get('shoulder_symmetry_status', 'Unknown')
+            shoulder_text = f"Shoulder Sym: {shoulder_status}"
+            
+            # Use the same font variables already defined
+            font = f  # cv2.FONT_HERSHEY_SIMPLEX
+            scale = s  # 0.6
+            thickness = t  # 2
+            
+            # Get text size
+            (text_w, text_h), _ = cv2.getTextSize(shoulder_text, font, scale, thickness)
+            
+            # Position - below orientation text
+            x_pos = 10
+            y_pos = org[1] + h + 17  # Position below orientation with some spacing
+            
+            # Draw white background
+            cv2.rectangle(vis_frame, 
+                        (x_pos - 5, y_pos - text_h - 5), 
+                        (x_pos + text_w + 5, y_pos + 5), 
+                        (255, 255, 255), -1)
+            
+            # Set color based on status
+            text_color = (0, 255, 0) if shoulder_status == "Correct" else (0, 0, 255)
+            
+            # Draw text
+            cv2.putText(vis_frame, shoulder_text, (x_pos, y_pos), 
+                    font, scale, text_color, thickness)
+
+
+        # Position below orientation if debug, else use fixed position
+        if self.debug and iris_info is not None:
+            blink_h = cv2.getTextSize(f"Blinks: {iris_info['total_blinks']}", cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0][1]
+            y_pos = 100 + 15 + blink_h + 17 + blink_h + 35  # Below orientation
+        else:
+            y_pos = 150  # Fixed position
+        
+        # Font settings
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = 0.6
+        thickness = 2
+
 
         # Add debug indicator
         if self.debug:
