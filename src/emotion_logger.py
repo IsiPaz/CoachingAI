@@ -235,6 +235,9 @@ class EmotionLogger:
             print(f"    Head Tilt:         {posture['head_tilt']:+.2f}° ({'Right' if posture['head_tilt'] > 0 else 'Left' if posture['head_tilt'] < 0 else 'Neutral'})")
             print(f"    Head Turn:         {posture['head_turn']:+.2f}° ({'Right' if posture['head_turn'] > 0 else 'Left' if posture['head_turn'] < 0 else 'Forward'})")
             
+            print(f"\n  Estimated Orientation:")
+            print(f"    Person is facing: {posture.get('orientation', 'Unknown')}")
+
             print(f"\n  OVERALL POSTURE:")
             print(f"    Overall Alignment: {posture['overall_posture_score']:.3f}")
 
@@ -308,11 +311,13 @@ class EmotionLogger:
         return circumplex
         
     def create_visualization(self, 
-                           frame_bgr: np.ndarray,
-                           face_bbox: Optional[np.ndarray] = None,
-                           emotion_info: Optional[Dict] = None,
-                           iris_info: Optional[Dict] = None,
-                           distance_info: Optional[Dict] = None) -> np.ndarray:
+                            frame_bgr: np.ndarray,
+                            face_bbox: Optional[np.ndarray] = None,
+                            emotion_info: Optional[Dict] = None,
+                            iris_info: Optional[Dict] = None,
+                            distance_info: Optional[Dict] = None,
+                            pose_info: Optional[Dict] = None) -> np.ndarray:
+
         """
         Create the final visualization with emotion, iris, and distance information.
         
@@ -404,7 +409,13 @@ class EmotionLogger:
         if self.show_fps:
             fps_text = f"FPS: {self.current_fps:.1f}"
             cv2.putText(vis_frame, fps_text, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-        
+
+        if self.debug and pose_info is not None:
+            orientation = pose_info['posture_metrics'].get("orientation", "Unknown")
+            cv2.putText(vis_frame, f"Orientation: {orientation}", 
+                        (10, vis_frame.shape[0] - 100), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
         # Add debug indicator
         if self.debug:
             cv2.putText(vis_frame, "DEBUG MODE", (10, vis_frame.shape[0] - 20), 

@@ -243,7 +243,8 @@ class VideoStream:
                     display_frame = self.pose_handler.draw_pose_visualization(display_frame, pose_info, self.logger.debug)
                             
                 # Create emotion visualization (lightweight)
-                display_frame = self.logger.create_visualization(display_frame, face_bbox, emotion_info, iris_info, distance_info)
+                display_frame = self.logger.create_visualization(display_frame, face_bbox, emotion_info, iris_info, distance_info, pose_info)
+
                 
                 # Display frame
                 cv2.imshow('Real-time Emotion Recognition', display_frame)

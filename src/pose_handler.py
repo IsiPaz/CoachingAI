@@ -222,6 +222,12 @@ class PoseHandler:
         # Head orientation score (slightly more permissive)
         head_tilt = abs(posture_metrics['head_tilt'])
         head_turn = abs(posture_metrics['head_turn'])
+
+        # Profile or Frontal
+        if abs(posture_metrics["head_turn"]) > 25:
+            posture_metrics["orientation"] = "Side Profile"
+        else:
+            posture_metrics["orientation"] = "Frontal"
         
         # Good range: 0-20°, Fair: 20-38°, Poor: >38°
         if head_tilt <= 20 and head_turn <= 20:
