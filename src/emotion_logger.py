@@ -259,64 +259,18 @@ class EmotionLogger:
             if interference['interfering_hands']:
                 print(f"  Interfering Hands:      {', '.join(map(str, interference['interfering_hands']))}")
         
-        # Communication quality assessment
-        if 'communication_quality' in hand_info:
-            quality = hand_info['communication_quality']
-            print(f"\nNON-VERBAL COMMUNICATION QUALITY:")
-            print(f"  Overall Score:      {quality['overall_score']:.3f}")
-            print(f"  Clarity:            {quality['clarity']:.3f}")
-            print(f"  Expressiveness:     {quality['expressiveness']:.3f}")
-            print(f"  Appropriateness:    {quality['appropriateness']:.3f}")
-            
-            if quality['recommendations']:
-                print(f"\n  Recommendations:")
-                for rec in quality['recommendations']:
-                    print(f"    • {rec}")
 
         # Hand Tracking and Gesture Analysis
-        if hand_info is not None and hand_info['hands_detected']:
-            print(f"\n{'='*60}")
-            print(f"HAND TRACKING AND GESTURE ANALYSIS:")
-            print(f"{'='*60}")
+        if hand_info and 'face_interference' in hand_info:
+            interference = hand_info['face_interference']
+            print(f"\nFACE INTERFERENCE DETECTION:")
+            print(f"  Currently Interfering:  {'YES' if interference['is_interfering'] else 'NO'}")
+            print(f"  Interference Score:     {interference['interference_score']:.3f}")
+            print(f"  Duration:               {interference['duration']:.1f} seconds")
+            print(f"  Sustained (>5s):        {'YES - FACE COVERED!' if interference['sustained_interference'] else 'NO'}")
             
-            print(f"\nHAND DETECTION:")
-            print(f"  Hands Detected:     {hand_info['num_hands']}")
-            print(f"  Hands in Frame:     {'Yes' if hand_info['hands_in_frame'] else 'No'}")
-            
-            if hand_info.get('hand_symmetry') is not None:
-                print(f"  Hand Symmetry:      {hand_info['hand_symmetry']:.3f}")
-            
-            # Print metrics for each detected hand
-            for hand_side, metrics in hand_info['hand_metrics'].items():
-                print(f"\n{hand_side.upper()} HAND METRICS:")
-                print(f"  Hand Openness:      {metrics['openness']:.3f} (0=fist, 1=open)")
-                print(f"  Finger Spread:      {metrics['finger_spread']:.3f}")
-                print(f"  Movement Velocity:  {metrics['velocity']:.4f}")
-                print(f"  Gesticulation:      {metrics['gesticulation_intensity']:.3f} (0=still, 1=high)")
-                print(f"  Gesture Phase:      {metrics['gesture_phase']}")
-                print(f"  Primary Gesture:    {metrics['primary_gesture'].upper()}")
-                print(f"  Gesture Confidence: {metrics['gesture_confidence']:.3f}")
-                
-                # Print detected gestures
-                print(f"\n  Gesture Detection:")
-                for gesture, detected in metrics['gestures_detected'].items():
-                    if detected:
-                        print(f"    ✓ {gesture}")
-                
-                # Print finger states
-                print(f"\n  Finger States:")
-                for finger, state in metrics['finger_states'].items():
-                    status = "Extended" if state['extended'] else "Curled"
-                    print(f"    {finger.capitalize():>6}: {status} (curl: {state['curl']:.3f})")
-            
-            # Communication quality assessment
-            if 'communication_quality' in hand_info:
-                quality = hand_info['communication_quality']
-                print(f"\nNON-VERBAL COMMUNICATION QUALITY:")
-                print(f"  Overall Score:      {quality['overall_score']:.3f}")
-                print(f"  Clarity:            {quality['clarity']:.3f}")
-                print(f"  Expressiveness:     {quality['expressiveness']:.3f}")
-                print(f"  Appropriateness:    {quality['appropriateness']:.3f}")
+            if interference['interfering_hands']:
+                print(f"  Interfering Hands:      {', '.join(map(str, interference['interfering_hands']))}")
 
         # Emotional quadrant
         quadrant = self._get_emotional_quadrant(valence, arousal)
@@ -474,37 +428,46 @@ class EmotionLogger:
             cv2.putText(vis_frame, blink_text, org, f, s, (0,0,0), t)
                     
         # Draw hand information if available
-        if hand_info is not None and hand_info['hands_detected']:
-            # Draw hand status on right side
-            y_offset = 60
-            x_offset = vis_frame.shape[1] - 300
+        if hand_info and hand_info.get('face_interference', {}).get('sustained_interference', False):
+            interference = hand_info['face_interference']
             
-            hand_text = f"Hands: {hand_info['num_hands']}"
-            cv2.putText(vis_frame, hand_text, (x_offset, y_offset), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            # Alert text
+            alert_text = "FACE COVERED"
+            duration_text = f"Duration: {interference['duration']:.1f}s"
             
-            # Draw metrics for each hand
-            for idx, (hand_side, metrics) in enumerate(hand_info['hand_metrics'].items()):
-                y_pos = y_offset + 25 + (idx * 60)
-                
-                # Hand side and gesture
-                gesture_text = f"{hand_side.title()}: {metrics['primary_gesture']}"
-                cv2.putText(vis_frame, gesture_text, (x_offset, y_pos), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-                
-                # Openness and gesticulation
-                metrics_text = f"Open: {metrics['openness']:.2f} | Gest: {metrics['gesticulation_intensity']:.2f}"
-                cv2.putText(vis_frame, metrics_text, (x_offset, y_pos + 20), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+            # Calculate text size
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            scale = 0.6
+            thickness = 2
             
-            # Draw communication quality if both hands visible
-            if 'communication_quality' in hand_info:
-                quality = hand_info['communication_quality']
-                quality_text = f"Comm Quality: {quality['overall_score']:.2f}"
-                quality_color = (0, 255, 0) if quality['overall_score'] > 0.7 else (0, 255, 255) if quality['overall_score'] > 0.4 else (0, 0, 255)
-                cv2.putText(vis_frame, quality_text, (x_offset, y_offset + 120), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, quality_color, 2)
-        
+            (alert_w, alert_h), _ = cv2.getTextSize(alert_text, font, scale, thickness)
+            (duration_w, duration_h), _ = cv2.getTextSize(duration_text, font, scale, thickness)
+            
+            # Position at top center
+            alert_x = (vis_frame.shape[1] - alert_w) // 2
+            alert_y = 30
+            duration_x = (vis_frame.shape[1] - duration_w) // 2
+            duration_y = alert_y + alert_h + 10
+            
+            # Draw white background rectangles
+            cv2.rectangle(vis_frame, 
+                        (alert_x - 10, alert_y - alert_h - 5), 
+                        (alert_x + alert_w + 10, alert_y + 5), 
+                        (255, 255, 255), -1)
+            
+            cv2.rectangle(vis_frame, 
+                        (duration_x - 10, duration_y - duration_h - 5), 
+                        (duration_x + duration_w + 10, duration_y + 5), 
+                        (255, 255, 255), -1)
+            
+            # Draw red text
+            cv2.putText(vis_frame, alert_text, (alert_x, alert_y), font, scale, (0, 0, 255), thickness)
+            cv2.putText(vis_frame, duration_text, (duration_x, duration_y), font, scale, (0, 0, 255), thickness)
+
+
+
+
+
         # Draw FPS counter (only if option enabled)
         if self.show_fps:
             fps_text = f"FPS: {self.current_fps:.1f}"

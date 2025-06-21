@@ -21,7 +21,7 @@ class HandHandler:
                  device: str = "cuda:0",
                  max_num_hands: int = 2,
                  history_window_size: int = 30,
-                 face_interference_threshold: float = 0.3,
+                 face_interference_threshold: float = 0.2,
                  interference_time_threshold: float = 5.0):
         """
         Initialize the Hand handler.
@@ -347,22 +347,23 @@ class HandHandler:
         Returns:
             Openness value between 0 and 1
         """
-        # Calculate average finger curl
-        finger_curls = []
+        # Calculate average finger extension (opposite of curl)
+        finger_extensions = []
         for i in range(5):
             curl = self.calculate_finger_curl(landmarks, i)
-            finger_curls.append(curl)
+            extension = 1.0 - curl  # Invert curl to get extension
+            finger_extensions.append(extension)
         
-        # Invert to get openness (1 - curl)
-        avg_openness = 1.0 - np.mean(finger_curls)
+        # Calculate average extension
+        avg_extension = np.mean(finger_extensions)
         
-        # Also consider finger spread
+        # Also consider finger spread for more accurate detection
         spread = self.calculate_finger_spread(landmarks)
         
-        # Combine openness and spread
-        combined_openness = avg_openness * 0.7 + spread * 0.3
+        # Combine extension and spread (weighted more towards extension)
+        combined_openness = avg_extension * 0.8 + spread * 0.2
         
-        return combined_openness
+        return np.clip(combined_openness, 0.0, 1.0)
     
     def calculate_finger_spread(self, landmarks: np.ndarray) -> float:
         """
@@ -466,7 +467,7 @@ class HandHandler:
             True if open palm detected
         """
         openness = self.calculate_hand_openness(landmarks)
-        return openness > 0.8
+        return openness > 0.7
     
     def detect_closed_fist(self, landmarks: np.ndarray) -> bool:
         """
@@ -479,7 +480,7 @@ class HandHandler:
             True if closed fist detected
         """
         openness = self.calculate_hand_openness(landmarks)
-        return openness < 0.2
+        return openness < 0.3
     
     def calculate_hand_velocity(self, hand_center: np.ndarray, handedness: str) -> float:
         """
@@ -587,62 +588,7 @@ class HandHandler:
         
         return symmetry
     
-    def analyze_communication_quality(self, hand_metrics: Dict) -> Dict:
-        """
-        Analyze the quality of non-verbal hand communication.
-        
-        Args:
-            hand_metrics: Dictionary containing hand analysis metrics
-            
-        Returns:
-            Communication quality assessment
-        """
-        quality_assessment = {
-            'overall_score': 0.0,
-            'clarity': 0.0,
-            'expressiveness': 0.0,
-            'appropriateness': 0.0,
-            'recommendations': []
-        }
-        
-        # Check for face interference
-        if self.is_face_interfered:
-            quality_assessment['appropriateness'] = 0.2
-            quality_assessment['recommendations'].append("Avoid covering face with hands for extended periods")
-        else:
-            quality_assessment['appropriateness'] = 0.8
-        
-        # Assess clarity (clear gestures vs ambiguous movements)
-        if hand_metrics.get('gesture_confidence', 0) > 0.7:
-            quality_assessment['clarity'] = 0.9
-        else:
-            quality_assessment['clarity'] = 0.5
-            quality_assessment['recommendations'].append("Use more defined gestures")
-        
-        # Assess expressiveness
-        intensity = hand_metrics.get('gesticulation_intensity', 0)
-        if 0.2 <= intensity <= 0.7:
-            quality_assessment['expressiveness'] = 1.0
-        elif intensity < 0.2:
-            quality_assessment['expressiveness'] = 0.3
-            quality_assessment['recommendations'].append("Increase hand movement for emphasis")
-        else:
-            quality_assessment['expressiveness'] = 0.6
-            quality_assessment['recommendations'].append("Reduce excessive hand movements")
-        
-        # Additional check for hands in frame
-        if not hand_metrics.get('hands_in_frame', True):
-            quality_assessment['appropriateness'] = min(quality_assessment['appropriateness'], 0.5)
-            quality_assessment['recommendations'].append("Keep hands visible during communication")
-        
-        # Calculate overall score
-        quality_assessment['overall_score'] = np.mean([
-            quality_assessment['clarity'],
-            quality_assessment['expressiveness'],
-            quality_assessment['appropriateness']
-        ])
-        
-        return quality_assessment
+
     
     def process_frame(self, frame_rgb: np.ndarray, face_bbox: Optional[np.ndarray] = None) -> Optional[Dict]:
         """
@@ -701,8 +647,9 @@ class HandHandler:
         # Collect landmarks for interference detection
         hand_landmarks_list = []
         
+
         for idx, (hand_landmarks, handedness) in enumerate(zip(results.multi_hand_landmarks, 
-                                                               results.multi_handedness)):
+                                                            results.multi_handedness)):
             # Determine hand side
             hand_label = handedness.classification[0].label.lower()
             
@@ -718,6 +665,17 @@ class HandHandler:
             openness = self.calculate_hand_openness(landmarks_array)
             finger_spread = self.calculate_finger_spread(landmarks_array)
             velocity = self.calculate_hand_velocity(hand_center[:2], hand_label)
+            
+            # *** AQUÍ VAS A AGREGAR EL CÓDIGO DEL HAND_STATE ***
+            # Determine hand state
+            hand_state = "unknown"
+            if openness > 0.7:
+                hand_state = "open"
+            elif openness < 0.3:
+                hand_state = "closed"
+            else:
+                hand_state = "partial"
+            # *** FIN DEL CÓDIGO AGREGADO ***
             
             # Detect specific gestures
             gestures_detected = {
@@ -762,7 +720,8 @@ class HandHandler:
                 'finger_states': finger_states,
                 'hand_center': hand_center.tolist(),
                 'is_dominant': idx == 0,  # First detected hand is usually dominant
-                'hands_in_frame': True
+                'hands_in_frame': True,
+                'hand_state': hand_state,  # *** AGREGAR ESTA LÍNEA AQUÍ ***
             }
             
             # Add to history
@@ -782,14 +741,6 @@ class HandHandler:
         else:
             hands_info['hand_symmetry'] = 0.0
         
-        # Analyze overall communication quality
-        if hand_metrics:
-            # Use dominant hand or first available hand
-            dominant_hand = next(iter(hand_metrics.values()))
-            dominant_hand['hands_in_frame'] = True
-            hands_info['communication_quality'] = self.analyze_communication_quality(dominant_hand)
-        
-        hands_info['hand_metrics'] = hand_metrics
         
         return hands_info
     
@@ -813,27 +764,6 @@ class HandHandler:
         if not hand_info['hands_detected']:
             return vis_frame
         
-        # Draw face interference warning if active
-        if hand_info['face_interference']['sustained_interference']:
-            # Draw warning banner
-            warning_text = "WARNING: FACE COVERED BY HANDS"
-            text_size = cv2.getTextSize(warning_text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
-            
-            # Draw red warning banner at top
-            cv2.rectangle(vis_frame, 
-                         (vis_frame.shape[1]//2 - text_size[0]//2 - 20, 50),
-                         (vis_frame.shape[1]//2 + text_size[0]//2 + 20, 100),
-                         (0, 0, 255), -1)
-            
-            cv2.putText(vis_frame, warning_text,
-                       (vis_frame.shape[1]//2 - text_size[0]//2, 85),
-                       cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
-            
-            # Draw duration
-            duration_text = f"Duration: {hand_info['face_interference']['duration']:.1f}s"
-            cv2.putText(vis_frame, duration_text,
-                       (vis_frame.shape[1]//2 - 80, 120),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
         
         # Draw hand landmarks and connections
         if debug and 'hand_landmarks' in hand_info:
