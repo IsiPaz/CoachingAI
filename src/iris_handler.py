@@ -288,14 +288,30 @@ class IrisHandler:
         
         # Calculate eye metrics
         eye_metrics = self.calculate_eye_metrics()
+
+        # Store eye center coordinates for distance calculation
+        eye_coordinates = {}
         
         # Get iris positions for visualization (solo si los ojos están abiertos)
         left_iris_pos = None
         right_iris_pos = None
+
         if not eyes_closed:
             left_iris_pos = landmarks_array[self.LEFT_IRIS_CENTER].astype(int)
             right_iris_pos = landmarks_array[self.RIGHT_IRIS_CENTER].astype(int)
         
+        if left_iris_pos is not None:
+                    # Use the eye center landmarks for more accurate distance measurement
+                    left_eye_center = (landmarks_array[self.LEFT_EYE_INDICES[0]] + 
+                                    landmarks_array[self.LEFT_EYE_INDICES[3]]) / 2
+                    eye_coordinates['left_eye_center'] = left_eye_center.astype(float)
+                    
+        if right_iris_pos is not None:
+            # Use the eye center landmarks for more accurate distance measurement
+            right_eye_center = (landmarks_array[self.RIGHT_EYE_INDICES[0]] + 
+                            landmarks_array[self.RIGHT_EYE_INDICES[3]]) / 2
+            eye_coordinates['right_eye_center'] = right_eye_center.astype(float)
+
         return {
             # Raw eye aperture values
             "left_eye_aperture": left_ear,
@@ -318,7 +334,10 @@ class IrisHandler:
             "left_iris_position": left_iris_pos,
             "right_iris_position": right_iris_pos,
             "left_eye_landmarks": left_eye_landmarks.astype(int),
-            "right_eye_landmarks": right_eye_landmarks.astype(int)
+            "right_eye_landmarks": right_eye_landmarks.astype(int),
+            
+            # Eye coordinates for distance calculation
+            "eye_coordinates": eye_coordinates
         }
         
     def draw_iris_visualization(self, 
@@ -352,15 +371,14 @@ class IrisHandler:
                     cv2.circle(vis_frame, tuple(iris_info["left_iris_position"]), 4, (255, 0, 0), -1)
                 if iris_info["right_iris_position"] is not None:
                     cv2.circle(vis_frame, tuple(iris_info["right_iris_position"]), 4, (255, 0, 0), -1)
-            
-            # Draw eye aperture values y estado de los ojos
-            aperture_text = f"L: {iris_info['left_eye_aperture']:.3f} R: {iris_info['right_eye_aperture']:.3f}"
+            # Eyes text
             status_text = f"Eyes: {'CLOSED' if iris_info['eyes_closed'] else 'OPEN'}"
-            
-            cv2.putText(vis_frame, aperture_text,
-                       (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-            cv2.putText(vis_frame, status_text,
-                       (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, 
-                       (0, 0, 255) if iris_info['eyes_closed'] else (0, 255, 0), 2)
+            org = (10, 97)
+            font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+            color = (0, 0, 255) if iris_info['eyes_closed'] else (0, 255, 0)
+            (text_w, text_h), _ = cv2.getTextSize(status_text, font, scale, thickness)
+            cv2.rectangle(vis_frame, (org[0] - 5, org[1] - text_h - 5), (org[0] + text_w + 5, org[1] + 5), (255, 255, 255), -1)
+            cv2.putText(vis_frame, status_text, org, font, scale, color, thickness)
+
             
         return vis_frame

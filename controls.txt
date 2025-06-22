@@ -1,0 +1,42 @@
+Principales optimizaciones implementadas:
+1. Gestión de Cola Optimizada
+
+Colas más pequeñas (maxsize=1) para procesamiento en tiempo real
+Sistema de drop frames cuando las colas están llenas
+Evita acumulación de frames antiguos
+
+2. Procesamiento Escalonado
+
+Pose tracking solo cada N frames (configurable)
+Iris tracking en cada frame (es más liviano)
+Emotion recognition siempre (más crítico)
+
+3. Resultados Persistentes
+
+Guarda últimos resultados válidos
+Usa resultados anteriores cuando no hay nuevos
+Mantiene visualización suave
+
+4. Optimización de Display
+
+Display loop a 60fps independiente del procesamiento
+Debug info solo cada 10 frames
+FPS counter actualizado menos frecuentemente
+
+5. Controles Dinámicos
+
++ / -: Ajustar intervalo de procesamiento en tiempo real
+Permite balancear rendimiento vs precisión
+
+6. Configuración de Cámara Mejorada
+
+Buffer mínimo de cámara
+Opción para reducir resolución si es necesario
+
+Uso de los controles:
+
++: Aumenta intervalo (menos carga, menos precisión en pose)
+-: Disminuye intervalo (más carga, más precisión)
+d: Toggle debug interval (si debug está activo)
+s: Screenshot
+q: Quit
