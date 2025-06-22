@@ -23,7 +23,8 @@ class RealtimeEmotionRecognizer:
                  target_fps: int = 30,
                  show_fps: bool = False,
                  show_circumplex: bool = False,
-                 debug: bool = False):
+                 debug: bool = False,
+                 openai_api_key: str = None):
         """
         Initialize the real-time emotion recognition system.
         
@@ -36,6 +37,7 @@ class RealtimeEmotionRecognizer:
             show_fps: Whether to display FPS counter
             show_circumplex: Whether to display circumplex visualization
             debug: Whether to enable debug mode
+            openai_api_key: OpenAI API key for ChatGPT feedback
         """
         print("Initializing Real-time Emotion Recognition System...")
         
@@ -56,7 +58,8 @@ class RealtimeEmotionRecognizer:
             emonet_handler=self.emonet_handler,
             logger=self.logger,
             camera_id=camera_id,
-            target_fps=target_fps
+            target_fps=target_fps,
+            openai_api_key=openai_api_key
         )
         
         print("System initialized successfully!")
@@ -94,6 +97,8 @@ def main():
                        help="Show circumplex visualization")
     parser.add_argument("--debug", action="store_true",
                        help="Enable debug mode with detailed console output")
+    parser.add_argument("--openai_api_key", type=str, default=None,
+                       help="OpenAI API key for ChatGPT feedback")
     
     args = parser.parse_args()
     
@@ -107,7 +112,8 @@ def main():
             target_fps=args.target_fps,
             show_fps=args.show_fps,
             show_circumplex=args.show_circumplex,
-            debug=args.debug
+            debug=args.debug,
+            openai_api_key=args.openai_api_key
         )
         
         recognizer.start()

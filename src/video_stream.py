@@ -10,6 +10,7 @@ from emotion_logger import EmotionLogger
 from iris_handler import IrisHandler
 from distance_handler import DistanceHandler
 from hand_handler import HandHandler
+from feedback_handler import FeedbackHandler
 
 
 class VideoStream:
@@ -22,7 +23,8 @@ class VideoStream:
                  emonet_handler: EmoNetHandler,
                  logger: EmotionLogger,
                  camera_id: int = 0,
-                 target_fps: int = 30):
+                 target_fps: int = 30,
+                 openai_api_key: Optional[str] = None):
         """
         Initialize the video stream.
         
@@ -31,6 +33,7 @@ class VideoStream:
             logger: Emotion logger instance
             camera_id: Camera device ID
             target_fps: Target FPS for processing
+            openai_api_key: OpenAI API key for ChatGPT feedback
         """
         self.emonet_handler = emonet_handler
         self.logger = logger
@@ -43,6 +46,23 @@ class VideoStream:
         self.pose_handler = PoseHandler(device=emonet_handler.device)
         self.distance_handler = DistanceHandler(device=emonet_handler.device)
         self.hand_handler = HandHandler(device=emonet_handler.device)
+        
+        # Initialize feedback handler if API key provided
+        self.feedback_handler = None
+        if openai_api_key:
+            try:
+                self.feedback_handler = FeedbackHandler(
+                    api_key=openai_api_key,
+                    model="gpt-4o-mini",
+                    feedback_interval=5.0
+                )
+                self.feedback_handler.start()
+                print("ChatGPT feedback enabled")
+            except Exception as e:
+                print(f"Failed to initialize feedback handler: {e}")
+                self.feedback_handler = None
+        else:
+            print("No OpenAI API key provided - feedback disabled")
         
         # Optimized queues - smaller buffers for real-time processing
         self.frame_queue = queue.Queue(maxsize=1)  # Reduced buffer
@@ -147,6 +167,16 @@ class VideoStream:
                 if hand_info is not None:
                     self.last_results['hand_info'] = hand_info
                 
+                # Send state to feedback handler
+                if self.feedback_handler:
+                    self.feedback_handler.analyze_state(
+                        emotion_info=self.last_results['emotion_info'],
+                        iris_info=self.last_results['iris_info'],
+                        pose_info=self.last_results['pose_info'],
+                        distance_info=self.last_results['distance_info'],
+                        hand_info=self.last_results['hand_info']
+                    )
+                
                 # Put result in queue (drop old frames for real-time processing)
                 try:
                     self.result_queue.put_nowait((
@@ -190,6 +220,8 @@ class VideoStream:
             print("DEBUG MODE ENABLED - Detailed console output")
             print("Press 'd' to toggle debug print interval")
             print("Press '+' to increase processing interval, '-' to decrease")
+        if self.feedback_handler:
+            print("ChatGPT feedback enabled - Watch for supportive messages!")
         
         self.running = True
         
@@ -262,6 +294,9 @@ class VideoStream:
                 # Create emotion visualization (lightweight)
                 display_frame = self.logger.create_visualization(display_frame, face_bbox, emotion_info, iris_info, distance_info, pose_info, hand_info)
 
+                # Apply feedback overlay
+                if self.feedback_handler:
+                    display_frame = self.feedback_handler.draw_feedback(display_frame)
                 
                 # Display frame
                 cv2.imshow('Real-time Emotion Recognition', display_frame)
@@ -305,6 +340,11 @@ class VideoStream:
         """Stop the video stream and processing."""
         print("Stopping emotion recognition...")
         self.running = False
+        
+        # Stop feedback handler
+        if self.feedback_handler:
+            self.feedback_handler.stop()
+            print("Feedback handler stopped")
         
         if self.processing_thread and self.processing_thread.is_alive():
             self.processing_thread.join(timeout=2)
