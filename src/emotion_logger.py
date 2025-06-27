@@ -524,13 +524,6 @@ class EmotionLogger:
             cv2.putText(vis_frame, alert_text, (alert_x, alert_y), font, scale, (0, 0, 255), thickness)
             cv2.putText(vis_frame, duration_text, (duration_x, duration_y), font, scale, (0, 0, 255), thickness)
 
-        # Draw FPS counter (only if option enabled)
-        if self.show_fps:
-            fps_text = f"FPS: {self.current_fps:.1f}"
-            (text_w, text_h), _ = cv2.getTextSize(fps_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-            cv2.rectangle(vis_frame, (10 - 5, 65 - text_h - 5), (10 + text_w + 5, 65 + 5), (255, 255, 255), -1)
-            cv2.putText(vis_frame, fps_text, (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
-
 
         if self.debug and pose_info is not None:
             orientation = pose_info['posture_metrics'].get("orientation", "Unknown")
