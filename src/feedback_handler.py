@@ -336,10 +336,6 @@ class FeedbackHandler:
 
             feedback = response.choices[0].message.content.strip()
 
-            # Limitar a 100 caracteres para que no sea muy largo
-            if len(feedback) > 100:
-                feedback = feedback[:100].rstrip(".!,;:") + "."
-
             self._update_diversity_tracker(feedback)
             return feedback
 
