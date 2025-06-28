@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 import numpy as np
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
@@ -424,7 +425,9 @@ class ReportHandler:
         # Save to file if requested
         if save_to_file:
             timestamp = int(time.time())
-            filename = f"coaching_report_{timestamp}.txt"
+            local_time = datetime.fromtimestamp(timestamp)
+            safe_time_str = local_time.strftime("%Y-%m-%d_%H-%M-%S")
+            filename = f"coaching_report_{safe_time_str}.txt"
             
             try:
                 with open(filename, 'w', encoding='utf-8') as f:
@@ -445,17 +448,17 @@ class ReportHandler:
         response = self.openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Eres un coach profesional de comunicación virtual. Analiza estas métricas de una sesión de video coaching y proporciona un reporte constructivo, específico y actionable. Sé directo pero motivador."},
+                {"role": "system", "content": "You are a professional virtual communication coach. Analyze these video coaching session metrics and provide a constructive, specific and actionable report. Be direct but motivating. Use professional English."},
                 {"role": "user", "content": f"""{context}
 
-Genera un reporte de coaching que incluya:
+Generate a coaching report that includes:
 
-1. RESUMEN EJECUTIVO (2-3 líneas sobre el desempeño general)
-2. FORTALEZAS PRINCIPALES (máximo 3 puntos específicos)
-3. ÁREAS DE MEJORA PRIORITARIAS (máximo 3 puntos con acciones concretas)
-4. RECOMENDACIÓN CLAVE (1 acción específica más importante)
+1. EXECUTIVE SUMMARY (2-3 lines about overall performance)
+2. KEY STRENGTHS (maximum 3 specific points)
+3. PRIORITY IMPROVEMENT AREAS (maximum 3 points with concrete actions)
+4. KEY RECOMMENDATION (1 most important specific action)
 
-Usa un tono profesional pero cercano. Máximo 250 palabras. Sin formato markdown."""}
+Use a professional but approachable tone. Maximum 250 words. No markdown formatting."""}
             ],
             max_tokens=400,
             temperature=0.7,
@@ -476,93 +479,93 @@ Usa un tono profesional pero cercano. Máximo 250 palabras. Sin formato markdown
         
         # Posture analysis
         if analysis.get('posture', {}).get('avg_posture_score', 0) > 0.7:
-            strengths.append("Excelente postura corporal y presencia física")
+            strengths.append("Excellent body posture and physical presence")
         elif analysis.get('posture', {}).get('avg_posture_score', 0) < 0.5:
-            improvements.append("Mejorar alineación corporal y postura")
+            improvements.append("Improve body alignment and posture")
         
         # Gaze analysis
         if analysis.get('gaze', {}).get('gaze_centered_percentage', 0) > 75:
-            strengths.append("Contacto visual consistente y directo")
+            strengths.append("Consistent and direct eye contact")
         elif analysis.get('gaze', {}).get('gaze_centered_percentage', 0) < 50:
-            improvements.append("Mantener mayor contacto visual con la cámara")
+            improvements.append("Maintain better eye contact with camera")
         
         # Distance analysis
         if analysis.get('distance', {}).get('optimal_percentage', 0) > 75:
-            strengths.append("Distancia apropiada de cámara mantenida")
+            strengths.append("Appropriate camera distance maintained")
         elif analysis.get('distance', {}).get('optimal_percentage', 0) < 50:
-            improvements.append("Ajustar y mantener distancia óptima de cámara")
+            improvements.append("Adjust and maintain optimal camera distance")
         
         # Emotional analysis
         if analysis.get('emotions', {}).get('avg_valence', 0) > 0.2:
-            strengths.append("Estado emocional positivo y energía apropiada")
+            strengths.append("Positive emotional state and appropriate energy")
         elif analysis.get('emotions', {}).get('avg_valence', 0) < -0.1:
-            improvements.append("Trabajar en proyección de energía más positiva")
+            improvements.append("Work on projecting more positive energy")
         
         # Hand analysis
         face_covered = analysis.get('hands', {}).get('face_covered_percentage', 0)
         if face_covered > 15:
-            improvements.append("Evitar gestos que cubran el rostro")
+            improvements.append("Avoid gestures that cover the face")
         elif analysis.get('hands', {}).get('hands_visible_percentage', 0) > 60:
-            strengths.append("Uso apropiado de gestos y comunicación no verbal")
+            strengths.append("Appropriate use of gestures and non-verbal communication")
         
         # Build basic report
         overall_score = analysis.get('overall', {}).get('overall_score', 0.5)
         performance = analysis.get('overall', {}).get('performance_level', 'moderate')
         
-        basic_analysis = f"""RESUMEN EJECUTIVO:
-Sesión de {analysis['session_info']['duration_minutes']:.1f} minutos completada con desempeño {performance.upper()}. 
-Puntuación general: {overall_score:.2f}/1.0. {'Buen trabajo general con áreas específicas de mejora.' if overall_score > 0.6 else 'Oportunidades claras de mejora identificadas.'}
+        basic_analysis = f"""EXECUTIVE SUMMARY:
+{analysis['session_info']['duration_minutes']:.1f}-minute session completed with {performance.upper()} performance. 
+Overall score: {overall_score:.2f}/1.0. {'Good overall work with specific areas for improvement.' if overall_score > 0.6 else 'Clear improvement opportunities identified.'}
 
-FORTALEZAS PRINCIPALES:"""
+KEY STRENGTHS:"""
 
         for i, strength in enumerate(strengths[:3], 1):
             basic_analysis += f"\n{i}. {strength}"
         
         if not strengths:
-            basic_analysis += "\n1. Sesión completada con participación activa"
+            basic_analysis += "\n1. Session completed with active participation"
         
-        basic_analysis += "\n\nÁREAS DE MEJORA PRIORITARIAS:"
+        basic_analysis += "\n\nPRIORITY IMPROVEMENT AREAS:"
         
         for i, improvement in enumerate(improvements[:3], 1):
             basic_analysis += f"\n{i}. {improvement}"
         
         if not improvements:
-            basic_analysis += "\n1. Mantener consistencia en el desempeño actual"
+            basic_analysis += "\n1. Maintain consistency in current performance"
         
-        basic_analysis += "\n\nRECOMENDACIÓN CLAVE:\n"
+        basic_analysis += "\n\nKEY RECOMMENDATION:\n"
         if improvements:
-            basic_analysis += f"Enfócate en: {improvements[0]}"
+            basic_analysis += f"Focus on: {improvements[0]}"
         else:
-            basic_analysis += "Continúa practicando para mantener tu buen nivel"
+            basic_analysis += "Continue practicing to maintain your good level"
         
         return self._format_final_report(basic_analysis, analysis)
     
     def _prepare_analysis_context(self, analysis: Dict) -> str:
         """Prepare context summary for ChatGPT."""
-        context = f"""MÉTRICAS DE SESIÓN DE COACHING VIRTUAL:
+        context = f"""VIRTUAL COACHING SESSION METRICS:
 
-Duración: {analysis['session_info']['duration_minutes']:.1f} minutos
-Muestras analizadas: {analysis['session_info']['total_samples']}
+Duration: {analysis['session_info']['duration_minutes']:.1f} minutes
+Samples analyzed: {analysis['session_info']['total_samples']}
 
-RENDIMIENTO POR ÁREA:
+PERFORMANCE BY AREA:
 """
         
         if 'emotions' in analysis:
-            context += f"• Emociones: {analysis['emotions'].get('most_common_emotion', 'N/A')} dominante, valencia {analysis['emotions'].get('avg_valence', 0):.2f} ({'positiva' if analysis['emotions'].get('avg_valence', 0) > 0 else 'negativa'})\n"
+            context += f"• Emotions: {analysis['emotions'].get('most_common_emotion', 'N/A')} dominant, valence {analysis['emotions'].get('avg_valence', 0):.2f} ({'positive' if analysis['emotions'].get('avg_valence', 0) > 0 else 'negative'})\n"
         
         if 'posture' in analysis:
-            context += f"• Postura: {analysis['posture'].get('avg_posture_score', 0):.2f}/1.0, {analysis['posture'].get('frontal_percentage', 0):.1f}% frontal\n"
+            context += f"• Posture: {analysis['posture'].get('avg_posture_score', 0):.2f}/1.0, {analysis['posture'].get('frontal_percentage', 0):.1f}% frontal\n"
         
         if 'gaze' in analysis:
-            context += f"• Contacto visual: {analysis['gaze'].get('gaze_centered_percentage', 0):.1f}% centrado\n"
+            context += f"• Eye contact: {analysis['gaze'].get('gaze_centered_percentage', 0):.1f}% centered\n"
         
         if 'distance' in analysis:
-            context += f"• Distancia: {analysis['distance'].get('optimal_percentage', 0):.1f}% óptima, promedio {analysis['distance'].get('avg_distance_cm', 0):.0f}cm\n"
+            context += f"• Distance: {analysis['distance'].get('optimal_percentage', 0):.1f}% optimal, average {analysis['distance'].get('avg_distance_cm', 0):.0f}cm\n"
         
         if 'hands' in analysis:
-            context += f"• Manos: {analysis['hands'].get('hands_visible_percentage', 0):.1f}% visibles, {analysis['hands'].get('face_covered_percentage', 0):.1f}% cubriendo rostro\n"
+            context += f"• Hands: {analysis['hands'].get('hands_visible_percentage', 0):.1f}% visible, {analysis['hands'].get('face_covered_percentage', 0):.1f}% covering face\n"
         
-        context += f"\nPUNTUACIÓN GENERAL: {analysis.get('overall', {}).get('overall_score', 0):.2f}/1.0 ({analysis.get('overall', {}).get('performance_level', 'moderate')})"
+        context += f"\nOVERALL SCORE: {analysis.get('overall', {}).get('overall_score', 0):.2f}/1.0 ({analysis.get('overall', {}).get('performance_level', 'moderate')})"
         
         return context
     
@@ -570,88 +573,88 @@ RENDIMIENTO POR ÁREA:
         """Format the final report with analysis and detailed metrics."""
         
         report = f"""{'='*60}
-REPORTE FINAL DE COACHING VIRTUAL
+VIRTUAL COACHING FINAL REPORT
 {'='*60}
 
 {analysis_text}
 
 {'='*60}
-MÉTRICAS DETALLADAS DE LA SESIÓN
+DETAILED SESSION METRICS
 {'='*60}
 
-INFORMACIÓN GENERAL:
-• Duración: {metrics['session_info']['duration_minutes']:.1f} minutos
-• Muestras analizadas: {metrics['session_info']['total_samples']} (cada {self.sample_interval}s)
-• Puntuación general: {metrics.get('overall', {}).get('overall_score', 0):.3f}/1.0
+GENERAL INFORMATION:
+• Duration: {metrics['session_info']['duration_minutes']:.1f} minutes
+• Samples analyzed: {metrics['session_info']['total_samples']} (every {self.sample_interval}s)
+• Overall score: {metrics.get('overall', {}).get('overall_score', 0):.3f}/1.0
 """
         
         # Emotional metrics
         if 'emotions' in metrics and metrics['emotions'].get('status') != 'no_data':
             emotions = metrics['emotions']
             report += f"""
-ANÁLISIS EMOCIONAL:
-• Emoción predominante: {emotions.get('most_common_emotion', 'N/A')} ({emotions.get('emotion_percentage', 0):.1f}% del tiempo)
-• Valencia promedio: {emotions.get('avg_valence', 0):.3f} (rango: -1 negativa, +1 positiva)
-• Nivel de arousal: {emotions.get('avg_arousal', 0):.3f} (energía emocional)
-• Confianza promedio: {emotions.get('avg_confidence', 0):.3f}
-• Calidad del humor: {emotions.get('mood_quality', 'N/A').upper()}
-• Nivel de energía: {emotions.get('energy_level', 'N/A').upper()}
+EMOTIONAL ANALYSIS:
+• Predominant emotion: {emotions.get('most_common_emotion', 'N/A')} ({emotions.get('emotion_percentage', 0):.1f}% of time)
+• Average valence: {emotions.get('avg_valence', 0):.3f} (range: -1 negative, +1 positive)
+• Arousal level: {emotions.get('avg_arousal', 0):.3f} (emotional energy)
+• Average confidence: {emotions.get('avg_confidence', 0):.3f}
+• Mood quality: {emotions.get('mood_quality', 'N/A').upper()}
+• Energy level: {emotions.get('energy_level', 'N/A').upper()}
 """
         
         # Posture metrics
         if 'posture' in metrics and metrics['posture'].get('status') != 'no_data':
             posture = metrics['posture']
             report += f"""
-ANÁLISIS DE POSTURA:
-• Puntuación promedio: {posture.get('avg_posture_score', 0):.3f}/1.0
-• Calidad general: {posture.get('posture_quality', 'N/A').upper()}
-• Tiempo en orientación frontal: {posture.get('frontal_percentage', 0):.1f}%
-• Simetría de hombros: {posture.get('shoulder_symmetry_percentage', 0):.1f}% del tiempo
-• Consistencia postural: {posture.get('posture_consistency', 0):.3f}
-• Mejor puntuación: {posture.get('best_score', 0):.3f}
+POSTURE ANALYSIS:
+• Average score: {posture.get('avg_posture_score', 0):.3f}/1.0
+• Overall quality: {posture.get('posture_quality', 'N/A').upper()}
+• Time in frontal orientation: {posture.get('frontal_percentage', 0):.1f}%
+• Shoulder symmetry: {posture.get('shoulder_symmetry_percentage', 0):.1f}% of time
+• Posture consistency: {posture.get('posture_consistency', 0):.3f}
+• Best score: {posture.get('best_score', 0):.3f}
 """
         
         # Gaze metrics
         if 'gaze' in metrics and metrics['gaze'].get('status') != 'no_data':
             gaze = metrics['gaze']
             report += f"""
-ANÁLISIS DE CONTACTO VISUAL:
-• Mirada centrada: {gaze.get('gaze_centered_percentage', 0):.1f}% del tiempo
-• Calidad del contacto visual: {gaze.get('gaze_quality', 'N/A').upper()}
-• Puntuación de centrado: {gaze.get('avg_centering_score', 0):.3f}
-• Apertura ocular promedio: {gaze.get('avg_eye_aperture', 0):.3f}
-• Nivel de alerta: {gaze.get('alertness_level', 'N/A').upper()}
-• Total de parpadeos: {gaze.get('total_blinks', 0)}
+EYE CONTACT ANALYSIS:
+• Centered gaze: {gaze.get('gaze_centered_percentage', 0):.1f}% of time
+• Eye contact quality: {gaze.get('gaze_quality', 'N/A').upper()}
+• Centering score: {gaze.get('avg_centering_score', 0):.3f}
+• Average eye aperture: {gaze.get('avg_eye_aperture', 0):.3f}
+• Alertness level: {gaze.get('alertness_level', 'N/A').upper()}
+• Total blinks: {gaze.get('total_blinks', 0)}
 """
         
         # Distance metrics
         if 'distance' in metrics and metrics['distance'].get('status') != 'no_data':
             distance = metrics['distance']
             report += f"""
-ANÁLISIS DE DISTANCIA:
-• Distancia óptima: {distance.get('optimal_percentage', 0):.1f}% del tiempo
-• Distancia promedio: {distance.get('avg_distance_cm', 0):.1f} cm
-• Calidad de distancia: {distance.get('distance_quality', 'N/A').upper()}
-• Estado más común: {distance.get('most_common_status', 'N/A').upper()}
+DISTANCE ANALYSIS:
+• Optimal distance: {distance.get('optimal_percentage', 0):.1f}% of time
+• Average distance: {distance.get('avg_distance_cm', 0):.1f} cm
+• Distance quality: {distance.get('distance_quality', 'N/A').upper()}
+• Most common status: {distance.get('most_common_status', 'N/A').upper()}
 """
         
         # Hand metrics
         if 'hands' in metrics and metrics['hands'].get('status') != 'no_data':
             hands = metrics['hands']
             report += f"""
-ANÁLISIS DE COMUNICACIÓN NO VERBAL:
-• Manos visibles: {hands.get('hands_visible_percentage', 0):.1f}% del tiempo
-• Rostro cubierto: {hands.get('face_covered_percentage', 0):.1f}% del tiempo
-• Calidad de uso de manos: {hands.get('hand_usage_quality', 'N/A').upper()}
-• Actividad gestual promedio: {hands.get('avg_gesture_activity', 0):.3f}
-• Nivel de gesticulación: {hands.get('gesture_engagement', 'N/A').upper()}
-• Gesto más común: {hands.get('most_common_gesture', 'N/A').upper()}
+NON-VERBAL COMMUNICATION ANALYSIS:
+• Hands visible: {hands.get('hands_visible_percentage', 0):.1f}% of time
+• Face covered: {hands.get('face_covered_percentage', 0):.1f}% of time
+• Hand usage quality: {hands.get('hand_usage_quality', 'N/A').upper()}
+• Average gestural activity: {hands.get('avg_gesture_activity', 0):.3f}
+• Gesticulation level: {hands.get('gesture_engagement', 'N/A').upper()}
+• Most common gesture: {hands.get('most_common_gesture', 'N/A').upper()}
 """
         
         # Component scores
         if 'overall' in metrics and 'component_scores' in metrics['overall']:
             report += f"""
-PUNTUACIONES POR COMPONENTE:"""
+COMPONENT SCORES:"""
             for component, score in metrics['overall']['component_scores'].items():
                 report += f"""
 • {component.capitalize()}: {score:.3f}/1.0"""
@@ -659,8 +662,8 @@ PUNTUACIONES POR COMPONENTE:"""
         report += f"""
 
 {'='*60}
-Reporte generado automáticamente el {time.strftime('%Y-%m-%d %H:%M:%S')}
-Sistema de Coaching Virtual con IA
+Report automatically generated on {time.strftime('%Y-%m-%d %H:%M:%S')}
+AI-Powered Virtual Coaching System
 {'='*60}
 """
         
