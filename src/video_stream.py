@@ -105,7 +105,7 @@ class VideoStream:
                 self.feedback_handler = FeedbackHandler(
                     api_key=api_key,
                     model="gpt-4o-mini",
-                    feedback_interval=5.0
+                    feedback_interval=15.0
                 )
                 self.feedback_handler.start()
                 print("ChatGPT feedback enabled")
