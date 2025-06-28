@@ -315,9 +315,10 @@ class FeedbackHandler:
     - Avoid jargon or technical terms.
     - Be concise but clear.
     - Use no more than 14 words.
+    - Do not wrap your answer in quotation marks.
 
     Examples:
-    - "Your posture and eye contact are great — keep it up!"
+    - "Your posture and eye contact are great, keep it up!"
     - "Please straighten your back and show your face more."
     - "Good job staying engaged, just adjust your distance slightly."
     - "Your gestures distract a bit; try to keep hands visible but relaxed."
@@ -335,6 +336,15 @@ class FeedbackHandler:
             )
 
             feedback = response.choices[0].message.content.strip()
+
+            # Postprocesamiento para eliminar comillas externas
+            if feedback.startswith('"') and feedback.endswith('"'):
+                feedback = feedback[1:-1].strip()
+
+            # Limitar a 14 palabras como máximo
+            words = feedback.split()
+            if len(words) > 14:
+                feedback = ' '.join(words[:14]) + '...'
 
             self._update_diversity_tracker(feedback)
             return feedback
