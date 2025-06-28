@@ -341,11 +341,6 @@ class FeedbackHandler:
             if feedback.startswith('"') and feedback.endswith('"'):
                 feedback = feedback[1:-1].strip()
 
-            # Limitar a 14 palabras como máximo
-            words = feedback.split()
-            if len(words) > 14:
-                feedback = ' '.join(words[:14]) + '...'
-
             self._update_diversity_tracker(feedback)
             return feedback
 
