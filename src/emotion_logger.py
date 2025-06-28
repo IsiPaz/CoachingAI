@@ -483,7 +483,7 @@ class EmotionLogger:
             blink_text = f"Blinks: {iris_info['total_blinks']}"
             f, s, t = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
             (w, h), _ = cv2.getTextSize(blink_text, f, s, t)
-            org = (10, 100 + 15 + h)
+            org = (10, 70 + h)
             cv2.rectangle(vis_frame, (org[0]-5, org[1]-h-5), (org[0]+w+5, org[1]+5), (255,255,255), -1)
             cv2.putText(vis_frame, blink_text, org, f, s, (0,0,0), t)
                     
@@ -529,7 +529,7 @@ class EmotionLogger:
             orientation = pose_info['posture_metrics'].get("orientation", "Unknown")
             f, s, t = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
             blink_h = cv2.getTextSize(f"Blinks: {iris_info['total_blinks']}", f, s, t)[0][1]
-            org = (10, 100 + 15 + blink_h + 17 + blink_h)
+            org = (10, 70 + blink_h + 15 + blink_h) 
 
             # Force color: green if frontal, else red (any other case)
             color = (0, 255, 0) if orientation.lower() == "frontal" else (0, 0, 255)
@@ -552,7 +552,7 @@ class EmotionLogger:
             
             # Position - below orientation text
             x_pos = 10
-            y_pos = org[1] + h + 17  # Position below orientation with some spacing
+            y_pos = org[1] + h + 16  # Position below orientation with some spacing
             
             # Draw white background
             cv2.rectangle(vis_frame, 

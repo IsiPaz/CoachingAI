@@ -372,13 +372,13 @@ class IrisHandler:
                 if iris_info["right_iris_position"] is not None:
                     cv2.circle(vis_frame, tuple(iris_info["right_iris_position"]), 4, (255, 0, 0), -1)
             # Eyes text
-            status_text = f"Eyes: {'CLOSED' if iris_info['eyes_closed'] else 'OPEN'}"
-            org = (10, 97)
+            text = f"Eyes: {'CLOSED' if iris_info['eyes_closed'] else 'Open'}"
             font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
             color = (0, 0, 255) if iris_info['eyes_closed'] else (0, 255, 0)
-            (text_w, text_h), _ = cv2.getTextSize(status_text, font, scale, thickness)
-            cv2.rectangle(vis_frame, (org[0] - 5, org[1] - text_h - 5), (org[0] + text_w + 5, org[1] + 5), (255, 255, 255), -1)
-            cv2.putText(vis_frame, status_text, org, font, scale, color, thickness)
+            org = (10, 55)
+            (text_w, text_h), _ = cv2.getTextSize(text, font, scale, thickness)
+            cv2.rectangle(vis_frame, (org[0]-5, org[1]-text_h-5), (org[0]+text_w+5, org[1]+5), (255, 255, 255), -1)
+            cv2.putText(vis_frame, text, org, font, scale, color, thickness)
 
             
         return vis_frame

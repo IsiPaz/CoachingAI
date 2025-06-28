@@ -1,10 +1,10 @@
-import time
-from datetime import datetime
-import numpy as np
-from typing import Dict, List, Optional, Any
-from collections import defaultdict
+import os
 import json
-
+import time
+import numpy as np
+from typing import Dict, Any, Optional
+from datetime import datetime
+from collections import defaultdict
 
 class ReportHandler:
     """
@@ -424,10 +424,11 @@ class ReportHandler:
         
         # Save to file if requested
         if save_to_file:
+            os.makedirs('reports', exist_ok=True)
             timestamp = int(time.time())
             local_time = datetime.fromtimestamp(timestamp)
             safe_time_str = local_time.strftime("%Y-%m-%d_%H-%M-%S")
-            filename = f"coaching_report_{safe_time_str}.txt"
+            filename = f"reports/coaching_report_{safe_time_str}.txt"
             
             try:
                 with open(filename, 'w', encoding='utf-8') as f:
@@ -681,7 +682,7 @@ AI-Powered Virtual Coaching System
         """
         if filename is None:
             timestamp = int(time.time())
-            filename = f"session_data_{timestamp}.json"
+            filename = f"reports/session_data_{timestamp}.json"
         
         session_data = {
             'session_info': {

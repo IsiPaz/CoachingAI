@@ -803,12 +803,27 @@ class HandHandler:
                                (wrist_x - 50, wrist_y + 50),
                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, openness_color, 2)
         
-        # Draw face interference indicator
         if hand_info['face_interference']['is_interfering'] and not hand_info['face_interference']['sustained_interference']:
-            # Yellow warning for temporary interference
-            interference_text = f"Face interference: {hand_info['face_interference']['interference_score']:.2f}"
-            cv2.putText(vis_frame, interference_text,
-                       (10, vis_frame.shape[0] - 40),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            # Prepare text and style settings
+            text = f"Face interference: {hand_info['face_interference']['interference_score']:.2f}"
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.6
+            text_color = (0, 140, 255)  # Orange (BGR)
+            bg_color = (255, 255, 255)  # White
+            thickness = 2
+            x, y = 10, vis_frame.shape[0] - 307
+
+            # Measure text size for background rectangle
+            (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+
+            # Draw white background rectangle slightly larger than the text
+            cv2.rectangle(vis_frame, 
+                        (x - 5, y - text_h - 5), 
+                        (x + text_w + 5, y + baseline + 5), 
+                        bg_color, 
+                        cv2.FILLED)
+
+            # Overlay the interference text
+            cv2.putText(vis_frame, text, (x, y), font, font_scale, text_color, thickness)
         
         return vis_frame

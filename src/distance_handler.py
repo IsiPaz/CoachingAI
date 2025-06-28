@@ -145,12 +145,12 @@ class DistanceHandler:
             Dictionary with status and recommendations
         """
         if distance_cm < self.TOO_CLOSE_THRESHOLD:
-            status = "TOO_CLOSE"
+            status = "Too close"
             recommendation = "Move back from camera"
             quality = "poor"
             color = (0, 0, 255)  # Red
         elif distance_cm > self.TOO_FAR_THRESHOLD:
-            status = "TOO_FAR"
+            status = "Too far"
             recommendation = "Move closer to camera"
             quality = "poor"
             color = (0, 0, 255)  # Red
@@ -162,10 +162,10 @@ class DistanceHandler:
         else:
             # Combine all other cases into poor quality (too close or too far)
             if distance_cm < self.OPTIMAL_MIN_DISTANCE:
-                status = "TOO_CLOSE"
+                status = "Too close"
                 recommendation = "Move back from camera"
             else:
-                status = "TOO_FAR"
+                status = "Too far"
                 recommendation = "Move closer to camera"
             quality = "poor"
             color = (0, 0, 255)  # Red
