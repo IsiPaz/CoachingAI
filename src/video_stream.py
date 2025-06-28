@@ -12,6 +12,7 @@ from iris_handler import IrisHandler
 from distance_handler import DistanceHandler
 from hand_handler import HandHandler
 from feedback_handler import FeedbackHandler
+from report_handler import ReportHandler  # NEW IMPORT
 
 
 class VideoStream:
@@ -63,6 +64,12 @@ class VideoStream:
         
         # Initialize feedback handler
         self._init_feedback_handler(openai_api_key)
+        
+        # NEW: Initialize report handler
+        self.report_handler = ReportHandler(
+            openai_client=getattr(self.feedback_handler, 'client', None) if self.feedback_handler else None,
+            sample_interval=2.0  # Collect metrics every 2 seconds
+        )
         
         # MEJORA SIMPLE: Double buffering para frames
         self.current_frame = None
@@ -222,6 +229,15 @@ class VideoStream:
                     distance_info=self.latest_results['distance_info'],
                     hand_info=self.latest_results['hand_info']
                 )
+            
+            # NEW: Collect metrics for report
+            self.report_handler.collect_metrics(
+                emotion_info=self.latest_results['emotion_info'],
+                iris_info=self.latest_results['iris_info'],
+                pose_info=self.latest_results['pose_info'],
+                distance_info=self.latest_results['distance_info'],
+                hand_info=self.latest_results['hand_info']
+            )
                 
             # Performance tracking
             process_time = time.perf_counter() - process_start
@@ -280,6 +296,10 @@ class VideoStream:
             
         if self.feedback_handler:
             print("ChatGPT feedback enabled - Watch for supportive messages!")
+        
+        # NEW: Start session tracking
+        self.report_handler.start_session()
+        print("📊 Session metrics collection started")
             
         self.running = True
         
@@ -370,6 +390,10 @@ class VideoStream:
                     print(f"Debug mode: {'ON' if self.logger.debug else 'OFF'}")
                 elif key == ord('p'):
                     self._print_performance_stats()
+                # NEW: Quick report preview
+                elif key == ord('r'):
+                    summary = self.report_handler.get_quick_summary()
+                    print(f"📊 Current session: {summary}")
                     
                 # Update counters
                 self.frame_counter += 1
@@ -443,6 +467,47 @@ class VideoStream:
         # Stop feedback handler
         if self.feedback_handler:
             self.feedback_handler.stop()
+            
+        # NEW: Generate final report
+        if len(self.report_handler.session_metrics) > 5:  # Only if sufficient data
+            print("\n" + "="*50)
+            print("GENERATING COACHING REPORT...")
+            print("="*50)
+            
+            try:
+                # Generate and save comprehensive report
+                report_content = self.report_handler.generate_report(save_to_file=True)
+                
+                # Save raw session data for future analysis
+                self.report_handler.save_session_data()
+                
+                # Print quick summary to console
+                print("\n📊 SESSION SUMMARY:")
+                print("-" * 40)
+                summary = self.report_handler.get_quick_summary()
+                print(summary)
+                
+                # Show key highlights
+                analysis = self.report_handler.analyze_session()
+                if 'overall' in analysis:
+                    score = analysis['overall'].get('overall_score', 0)
+                    level = analysis['overall'].get('performance_level', 'unknown')
+                    print(f"Overall Performance: {level.upper()} ({score:.2f}/1.0)")
+                
+                print("-" * 40)
+                print("📁 Full report saved to file")
+                print("✅ Session analysis complete!")
+                
+            except Exception as e:
+                print(f"❌ Error generating final report: {e}")
+                # Still save whatever data we have
+                try:
+                    self.report_handler.save_session_data()
+                    print("📋 Raw session data saved for manual analysis")
+                except:
+                    pass
+        else:
+            print("⚠️  Insufficient data for comprehensive report (session too short)")
             
         # Release camera
         if self.cap:
