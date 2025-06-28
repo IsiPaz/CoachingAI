@@ -29,7 +29,7 @@ class DistanceHandler:
         
         # Optimal distance thresholds (in cm)
         self.OPTIMAL_MIN_DISTANCE = 45  # 45cm
-        self.OPTIMAL_MAX_DISTANCE = 80  # 80cm
+        self.OPTIMAL_MAX_DISTANCE = 70  # 70cm
         self.TOO_CLOSE_THRESHOLD = 30   # 30cm
         self.TOO_FAR_THRESHOLD = 120    # 120cm
         

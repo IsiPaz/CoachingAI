@@ -488,41 +488,27 @@ class EmotionLogger:
             cv2.putText(vis_frame, blink_text, org, f, s, (0,0,0), t)
                     
         # Draw hand information if available
+        x, y = 10, vis_frame.shape[0] - 307 + 18
+
         if hand_info and hand_info.get('face_interference', {}).get('sustained_interference', False):
             interference = hand_info['face_interference']
-            
-            # Alert text
             alert_text = "FACE COVERED"
             duration_text = f"Duration: {interference['duration']:.1f}s"
-            
-            # Calculate text size
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            scale = 0.6
-            thickness = 2
-            
-            (alert_w, alert_h), _ = cv2.getTextSize(alert_text, font, scale, thickness)
-            (duration_w, duration_h), _ = cv2.getTextSize(duration_text, font, scale, thickness)
-            
-            # Position at top center
-            alert_x = (vis_frame.shape[1] - alert_w) // 2
-            alert_y = 30
-            duration_x = (vis_frame.shape[1] - duration_w) // 2
-            duration_y = alert_y + alert_h + 10
-            
-            # Draw white background rectangles
+            font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+
+            (alert_w, alert_h), alert_bl = cv2.getTextSize(alert_text, font, scale, thickness)
+            (dur_w, dur_h), dur_bl = cv2.getTextSize(duration_text, font, scale, thickness)
+
+            bg_w = max(alert_w, dur_w) + 10
+            bg_h = alert_h + alert_bl + dur_h + dur_bl + 15
+
             cv2.rectangle(vis_frame, 
-                        (alert_x - 10, alert_y - alert_h - 5), 
-                        (alert_x + alert_w + 10, alert_y + 5), 
-                        (255, 255, 255), -1)
-            
-            cv2.rectangle(vis_frame, 
-                        (duration_x - 10, duration_y - duration_h - 5), 
-                        (duration_x + duration_w + 10, duration_y + 5), 
-                        (255, 255, 255), -1)
-            
-            # Draw red text
-            cv2.putText(vis_frame, alert_text, (alert_x, alert_y), font, scale, (0, 0, 255), thickness)
-            cv2.putText(vis_frame, duration_text, (duration_x, duration_y), font, scale, (0, 0, 255), thickness)
+                        (x - 5, y - bg_h + dur_bl), 
+                        (x - 5 + bg_w, y + dur_bl + 5), 
+                        (255, 255, 255), cv2.FILLED)
+
+            cv2.putText(vis_frame, alert_text, (x, y - dur_h - 5), font, scale, (0, 0, 255), thickness)
+            cv2.putText(vis_frame, duration_text, (x, y), font, scale, (0, 0, 255), thickness)
 
 
         if self.debug and pose_info is not None:

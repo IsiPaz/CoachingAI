@@ -436,7 +436,7 @@ class VideoStream:
             avg_process = np.mean(self.process_times) * 1000
             text = f"FPS - Cap: {self.fps_tracker['capture']:.1f} | Proc: {self.fps_tracker['process']:.1f} | Disp: {self.fps_tracker['display']:.1f} | Avg: {avg_process:.1f}ms"
             cv2.putText(frame, text, (10, frame.shape[0] - 10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), 1)
                        
     def _print_performance_stats(self) -> None:
         """Print detailed performance statistics."""
