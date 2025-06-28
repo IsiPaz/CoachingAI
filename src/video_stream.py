@@ -64,9 +64,13 @@ class VideoStream:
         # Initialize feedback handler
         self._init_feedback_handler(openai_api_key)
         
-        # Frame buffer using deque for better performance
-        self.frame_buffer = deque(maxlen=2)  # Keep only latest frames
-        self.buffer_lock = threading.Lock()
+        # MEJORA SIMPLE: Double buffering para frames
+        self.current_frame = None
+        self.previous_frame = None
+        self.frame_lock = threading.Lock()
+        
+        # RGB buffer reutilizable
+        self.rgb_buffer = None
         
         # Results storage
         self.latest_results = {
@@ -90,9 +94,8 @@ class VideoStream:
         self.last_fps_update = time.perf_counter()
         self.process_times = deque(maxlen=30)
         
-        # Pre-allocated buffers
-        self.rgb_buffer = None
-        self.display_buffer = None
+        # Display buffer - SEPARADO del processing
+        self.display_frame = None
         
         # Camera setup
         self._setup_camera()
@@ -146,6 +149,13 @@ class VideoStream:
         
         print(f"Camera initialized: {self.camera_width}x{self.camera_height} @ {actual_fps:.1f} FPS")
         
+        # MEJORA: Descartar primeros frames para estabilizar
+        print("Stabilizing camera...")
+        for _ in range(5):
+            ret, _ = self.cap.read()
+            if ret:
+                time.sleep(0.1)
+        
     def _capture_loop(self) -> None:
         """Dedicated thread for continuous frame capture."""
         frame_count = 0
@@ -156,9 +166,11 @@ class VideoStream:
             if not ret:
                 continue
             
-            # Store frame in buffer
-            with self.buffer_lock:
-                self.frame_buffer.append(frame)
+            # MEJORA: Simple double buffering
+            with self.frame_lock:
+                if self.current_frame is not None:
+                    self.previous_frame = self.current_frame.copy()
+                self.current_frame = frame.copy()  # Siempre hacer copia
             
             # FPS tracking
             frame_count += 1
@@ -173,11 +185,11 @@ class VideoStream:
         last_time = time.perf_counter()
         
         while self.running:
-            # Get latest frame
+            # Get current frame safely
             frame = None
-            with self.buffer_lock:
-                if self.frame_buffer:
-                    frame = self.frame_buffer[-1]  # Get most recent
+            with self.frame_lock:
+                if self.current_frame is not None:
+                    frame = self.current_frame.copy()  # Hacer copia para processing
                     
             if frame is None:
                 time.sleep(0.01)  # Short sleep if no frame
@@ -185,7 +197,7 @@ class VideoStream:
                 
             process_start = time.perf_counter()
             
-            # Pre-allocate RGB buffer if needed
+            # MEJORA: Reutilizar buffer RGB
             if self.rgb_buffer is None or self.rgb_buffer.shape != frame.shape:
                 self.rgb_buffer = np.empty_like(frame)
                 
@@ -286,51 +298,47 @@ class VideoStream:
         """Main display loop running at target FPS."""
         frame_count = 0
         last_time = time.perf_counter()
-        last_frame_time = time.perf_counter()
         
         try:
             while self.running:
                 loop_start = time.perf_counter()
                 
-                # Get latest frame from buffer
+                # MEJORA: Get frame for display (copia separada)
                 frame = None
-                with self.buffer_lock:
-                    if self.frame_buffer:
-                        frame = self.frame_buffer[-1]
+                with self.frame_lock:
+                    if self.current_frame is not None:
+                        frame = self.current_frame.copy()  # Copia dedicada para display
                         
                 if frame is None:
                     time.sleep(0.01)
                     continue
                     
-                # Pre-allocate display buffer
-                if self.display_buffer is None or self.display_buffer.shape != frame.shape:
-                    self.display_buffer = frame.copy()
-                else:
-                    np.copyto(self.display_buffer, frame)
+                # MEJORA: Trabajar en la copia, nunca modificar original
+                self.display_frame = frame  # No copy, frame ya es una copia
                     
                 # Get latest results
                 with self.results_lock:
                     results = self.latest_results.copy()
                     
-                # Apply visualizations
+                # Apply visualizations EN LA COPIA DE DISPLAY
                 if results['iris_info'] is not None:
-                    self.display_buffer = self.iris_handler.draw_iris_visualization(
-                        self.display_buffer, results['iris_info'], self.logger.debug
+                    self.display_frame = self.iris_handler.draw_iris_visualization(
+                        self.display_frame, results['iris_info'], self.logger.debug
                     )
                     
                 if results['pose_info'] is not None:
-                    self.display_buffer = self.pose_handler.draw_pose_visualization(
-                        self.display_buffer, results['pose_info'], self.logger.debug
+                    self.display_frame = self.pose_handler.draw_pose_visualization(
+                        self.display_frame, results['pose_info'], self.logger.debug
                     )
                     
                 if results['hand_info'] is not None:
-                    self.display_buffer = self.hand_handler.draw_hand_visualization(
-                        self.display_buffer, results['hand_info'], self.logger.debug
+                    self.display_frame = self.hand_handler.draw_hand_visualization(
+                        self.display_frame, results['hand_info'], self.logger.debug
                     )
                     
                 # Main visualization
-                self.display_buffer = self.logger.create_visualization(
-                    self.display_buffer,
+                self.display_frame = self.logger.create_visualization(
+                    self.display_frame,
                     results['face_bbox'],
                     results['emotion_info'],
                     results['iris_info'],
@@ -341,21 +349,21 @@ class VideoStream:
                 
                 # Feedback overlay
                 if self.feedback_handler:
-                    self.display_buffer = self.feedback_handler.draw_feedback(self.display_buffer)
+                    self.display_frame = self.feedback_handler.draw_feedback(self.display_frame)
                     
                 # Performance overlay in debug mode
                 if self.logger.debug:
-                    self._draw_performance_overlay(self.display_buffer)
+                    self._draw_performance_overlay(self.display_frame)
                     
                 # Display frame
-                cv2.imshow('Real-time Emotion Recognition', self.display_buffer)
+                cv2.imshow('Real-time Emotion Recognition', self.display_frame)
                 
                 # Handle keyboard input
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
                     break
                 elif key == ord('s'):
-                    self.logger.save_screenshot(self.display_buffer)
+                    self.logger.save_screenshot(self.display_frame)
                     print("Screenshot saved!")
                 elif key == ord('d'):
                     self.logger.debug = not self.logger.debug
