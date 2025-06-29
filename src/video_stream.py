@@ -12,7 +12,7 @@ from iris_handler import IrisHandler
 from distance_handler import DistanceHandler
 from hand_handler import HandHandler
 from feedback_handler import FeedbackHandler
-from report_handler import ReportHandler  # NEW IMPORT
+from report_handler import ReportHandler
 
 
 class VideoStream:
@@ -65,18 +65,18 @@ class VideoStream:
         # Initialize feedback handler
         self._init_feedback_handler(openai_api_key)
         
-        # NEW: Initialize report handler
+        # Initialize report handler
         self.report_handler = ReportHandler(
             openai_client=getattr(self.feedback_handler, 'client', None) if self.feedback_handler else None,
             sample_interval=2.0  # Collect metrics every 2 seconds
         )
         
-        # MEJORA SIMPLE: Double buffering para frames
+        # Double buffering para frames
         self.current_frame = None
         self.previous_frame = None
         self.frame_lock = threading.Lock()
         
-        # RGB buffer reutilizable
+        # buffer reutilizable
         self.rgb_buffer = None
         
         # Results storage
@@ -156,7 +156,7 @@ class VideoStream:
         
         print(f"Camera initialized: {self.camera_width}x{self.camera_height} @ {actual_fps:.1f} FPS")
         
-        # MEJORA: Descartar primeros frames para estabilizar
+        # Discard first frames to stabilize
         print("Stabilizing camera...")
         for _ in range(5):
             ret, _ = self.cap.read()
@@ -173,7 +173,7 @@ class VideoStream:
             if not ret:
                 continue
             
-            # MEJORA: Simple double buffering
+            # Simple double buffering
             with self.frame_lock:
                 if self.current_frame is not None:
                     self.previous_frame = self.current_frame.copy()
@@ -205,7 +205,7 @@ class VideoStream:
                 
             process_start = time.perf_counter()
             
-            # IMPROVEMENT: Reuse RGB buffer
+            # Reuse RGB buffer
             if self.rgb_buffer is None or self.rgb_buffer.shape != frame.shape:
                 self.rgb_buffer = np.empty_like(frame)
                 
@@ -217,7 +217,7 @@ class VideoStream:
             
             # Update results atomically
             with self.results_lock:
-                # NEW: Check if person left the scene completely
+                # Check if person left the scene completely
                 person_in_scene = (
                     results.get('face_bbox') is not None or 
                     (results.get('hand_info') and results['hand_info'].get('hands_detected', False))
@@ -248,7 +248,7 @@ class VideoStream:
                     hand_info=self.latest_results['hand_info']
                 )
             
-            # NEW: Collect metrics for report
+            # Collect metrics for report
             self.report_handler.collect_metrics(
                 emotion_info=self.latest_results['emotion_info'],
                 iris_info=self.latest_results['iris_info'],
@@ -317,7 +317,7 @@ class VideoStream:
         if self.feedback_handler:
             print("ChatGPT feedback enabled - Watch for supportive messages!")
         
-        # NEW: Start session tracking
+        # Start session tracking
         self.report_handler.start_session()
         print("📊 Session metrics collection started")
             
@@ -361,7 +361,7 @@ class VideoStream:
                 with self.results_lock:
                     results = self.latest_results.copy()
                     
-                # NEW: Verify result validity before drawing
+                # Verify result validity before drawing
                 # If no face or hands detected, don't draw anything
                 has_detection = (
                     results.get('face_bbox') is not None or 
@@ -419,7 +419,7 @@ class VideoStream:
                     print(f"Debug mode: {'ON' if self.logger.debug else 'OFF'}")
                 elif key == ord('p'):
                     self._print_performance_stats()
-                # NEW: Quick report preview
+                # Quick report preview
                 elif key == ord('r'):
                     summary = self.report_handler.get_quick_summary()
                     print(f"📊 Current session: {summary}")
@@ -498,7 +498,7 @@ class VideoStream:
         if self.feedback_handler:
             self.feedback_handler.stop()
             
-        # NEW: Generate final report
+        # Generate final report
         if len(self.report_handler.session_metrics) > 5:  # Only if sufficient data
             print("\n" + "="*50)
             print("GENERATING COACHING REPORT...")
@@ -556,7 +556,3 @@ class VideoStream:
     def is_running(self) -> bool:
         """Check if video stream is running."""
         return self.running
-        
-    def get_camera_info(self) -> Tuple[int, int]:
-        """Get camera resolution."""
-        return self.camera_width, self.camera_height

@@ -46,10 +46,10 @@ class FeedbackHandler:
         self.last_feedback_time = 0
         self.feedback_queue = queue.Queue(maxsize=5)
         
-        # Nuevo sistema de contexto
-        self.context_window = 15.0  # 15 segundos de contexto
-        self.state_history = []  # Historial de estados
-        self.feedback_diversity_tracker = []  # Para evitar repeticiones
+        # Context system
+        self.context_window = 15.0  # 15 seconds of context
+        self.state_history = []  # State History
+        self.feedback_diversity_tracker = []  # To avoid repetitions
 
         # Threading for async API calls
         self.processing_thread = None
@@ -87,21 +87,21 @@ class FeedbackHandler:
                     
 
     def _process_feedback_loop(self):
-        """Background thread para procesamiento de feedback."""
+        """Background thread for feedback processing"""
         while self.running:
             try:
                 context_data = self.feedback_queue.get(timeout=1)
 
-                # Limitar historial para memoria
+                # Limit history for memory
                 if len(context_data['state_history']) > 20:
                     context_data['state_history'] = context_data['state_history'][-15:]
 
                 state_signature = self._get_state_signature(context_data['current_state'])
 
                 if state_signature == self.last_state_signature:
-                    # Mismo estado, mantener feedback previo pero actualizar tiempo para mostrar
+                    # Same state, keep previous feedback but update time to display
                     if self.current_feedback == "":
-                        # Si no hay feedback previo, forzar fallback
+                        # If no previous feedback, force fallback
                         self.current_feedback = self._get_contextual_fallback(context_data)
                     self.feedback_start_time = time.time()
                     continue
@@ -118,14 +118,14 @@ class FeedbackHandler:
                         'context_summary': self._get_brief_context_summary(context_data)
                     })
 
-                    # Mantener historial limitado
+                    # Keep limited history
                     if len(self.feedback_history) > self.max_feedback_history:
                         self.feedback_history.pop(0)
 
                     self.last_state_signature = state_signature
                     self.last_feedback = feedback
                 else:
-                    # No feedback generado, vaciar feedback actual para no mostrar nada
+                    # No feedback generated, clear current feedback to show nothing
                     self.current_feedback = ""
                     self.feedback_start_time = 0
                     self.last_feedback = ""
@@ -137,7 +137,7 @@ class FeedbackHandler:
 
 
     def _get_brief_context_summary(self, context_data: Dict) -> str:
-        """Resumen breve del contexto para el historial."""
+        """Brief context summary for history."""
         current = context_data['current_state']
         summary_parts = []
         
@@ -158,35 +158,35 @@ class FeedbackHandler:
                     distance_info: Optional[Dict],
                     hand_info: Optional[Dict]) -> None:
         """
-        Analiza el estado completo de manera contextual.
+        Analyzes the complete state in a contextual manner.
         """
         current_time = time.time()
         
-        # Verificar intervalo de feedback
+        # Check feedback interval
         if current_time - self.last_feedback_time < self.feedback_interval:
             return
         
-        # Construir estado contextual completo
+        # Build full contextual state
         current_state = self._build_contextual_state(
             emotion_info, iris_info, pose_info, distance_info, hand_info, current_time
         )
         
-        # Agregar al historial
+        # Add to history
         self.state_history.append(current_state)
         
-        # Mantener ventana de contexto (últimos 15 segundos)
+        # Keep context window (last 15 seconds)
         cutoff_time = current_time - self.context_window
         self.state_history = [s for s in self.state_history if s['timestamp'] > cutoff_time]
         
-        # Generar feedback solo si hay suficiente contexto
-        if len(self.state_history) >= 3:  # Al menos 3 estados para contexto
+        # Only generate feedback if there is enough context
+        if len(self.state_history) >= 3:  # At least 3 states for context
             context_data = {
                 'current_state': current_state,
                 'state_history': self.state_history,
                 'previous_feedback': self.feedback_history[-5:] if self.feedback_history else []
             }
             
-            # Cola para procesamiento
+            # Queue for processing
             try:
                 self.feedback_queue.put_nowait(context_data)
                 self.last_feedback_time = current_time
@@ -195,7 +195,7 @@ class FeedbackHandler:
 
     def _build_contextual_state(self, emotion_info, iris_info, pose_info, distance_info, hand_info, timestamp):
         """
-        Construye un estado contextual rico con interpretaciones cualitativas.
+        Builds a rich contextual state with qualitative interpretations.
         """
         state = {
             'timestamp': timestamp,
@@ -208,10 +208,10 @@ class FeedbackHandler:
             }
         }
         
-        # Interpretaciones cualitativas
+        # Qualitative interpretations
         state['interpretations'] = {}
         
-        # Análisis emocional contextual
+        # Contextual emotional analysis
         if emotion_info:
             valence = emotion_info.get('valence', 0)
             arousal = emotion_info.get('arousal', 0)
@@ -224,7 +224,7 @@ class FeedbackHandler:
                 'emotional_intensity': abs(valence) + abs(arousal)
             }
         
-        # Análisis de presencia y atención
+        # Presence and attention analysis
         if iris_info and distance_info:
             gaze_centered = iris_info['iris_position']['average_centering'] < 0.3
             eye_openness = iris_info['average_eye_aperture']
@@ -237,7 +237,7 @@ class FeedbackHandler:
                 'overall_engagement': 'engaged' if gaze_centered and eye_openness > 0.2 else 'disengaged'
             }
         
-        # Análisis de postura y presencia física
+        # Posture and physical presence analysis
         if pose_info:
             posture_score = pose_info['posture_metrics'].get('overall_posture_score', 0.5)
             orientation = pose_info['posture_metrics'].get('orientation', 'Unknown')
@@ -248,7 +248,7 @@ class FeedbackHandler:
                 'physical_confidence': posture_score
             }
         
-        # Análisis de comunicación gestual
+        # Gestural communication analysis
         if hand_info:
             hands_visible = hand_info.get('hands_detected', False)
             face_covered = hand_info.get('face_interference', {}).get('sustained_interference', False)
@@ -337,7 +337,7 @@ class FeedbackHandler:
 
             feedback = response.choices[0].message.content.strip()
 
-            # Postprocesamiento para eliminar comillas externas
+            # Post-processing to remove external quotes
             if feedback.startswith('"') and feedback.endswith('"'):
                 feedback = feedback[1:-1].strip()
 
@@ -351,57 +351,57 @@ class FeedbackHandler:
 
     def _prepare_contextual_prompt(self, context_data: Dict) -> str:
         """
-        Prepara un resumen contextual rico para ChatGPT.
+        Prepares a rich contextual summary for ChatGPT.
         """
         current = context_data['current_state']
         history = context_data['state_history']
         
-        # Extraer tendencias
+        # Extract trends
         emotional_trend = self._analyze_emotional_trend(history)
         attention_trend = self._analyze_attention_trend(history)
         posture_trend = self._analyze_posture_trend(history)
         
-        # Construir narrativa contextual
+        # Build contextual narrative
         context_parts = []
         
-        # Estado emocional actual y tendencia
+        # Current emotional state and trend
         if 'emotional_state' in current['interpretations']:
             emotion_data = current['interpretations']['emotional_state']
             context_parts.append(
-                f"ESTADO EMOCIONAL: {emotion_data['primary_emotion']} con energía {emotion_data['energy_level']} "
-                f"y mood {emotion_data['mood_quality']}. Tendencia: {emotional_trend}"
+                f"EMOTIONAL STATE: {emotion_data['primary_emotion']} with {emotion_data['energy_level']} energy "
+                f"and {emotion_data['mood_quality']} mood. Trend: {emotional_trend}"
             )
         
-        # Calidad de atención
+        # Attention quality
         if 'attention_quality' in current['interpretations']:
             attention_data = current['interpretations']['attention_quality']
             context_parts.append(
-                f"ATENCIÓN: {'Enfocado' if attention_data['gaze_focused'] else 'Distraído'}, "
-                f"alerta {attention_data['alertness_level']}, distancia {attention_data['distance_appropriateness']}. "
-                f"Tendencia: {attention_trend}"
+                f"ATTENTION: {'Focused' if attention_data['gaze_focused'] else 'Distracted'}, "
+                f"{attention_data['alertness_level']} alertness, {attention_data['distance_appropriateness']} distance. "
+                f"Trend: {attention_trend}"
             )
         
-        # Presencia física
+        # Physical presence
         if 'physical_presence' in current['interpretations']:
             physical_data = current['interpretations']['physical_presence']
             context_parts.append(
-                f"POSTURA: {physical_data['posture_quality']}, orientación {physical_data['body_orientation']}. "
-                f"Tendencia: {posture_trend}"
+                f"POSTURE: {physical_data['posture_quality']}, {physical_data['body_orientation']} orientation. "
+                f"Trend: {posture_trend}"
             )
         
-        # Comunicación gestual
+        # Gestural communication
         if 'gestural_communication' in current['interpretations']:
             gesture_data = current['interpretations']['gestural_communication']
-            gesture_status = "apropiada" if gesture_data['gesture_appropriateness'] else "problemática"
-            face_status = "visible" if gesture_data['face_accessibility'] else "cubierto"
-            context_parts.append(f"GESTOS: {gesture_status}, rostro {face_status}")
+            gesture_status = "appropriate" if gesture_data['gesture_appropriateness'] else "problematic"
+            face_status = "visible" if gesture_data['face_accessibility'] else "covered"
+            context_parts.append(f"GESTURES: {gesture_status}, face {face_status}")
         
         return '\n'.join(context_parts)
 
     def _analyze_emotional_trend(self, history: List[Dict]) -> str:
-        """Analiza tendencia emocional."""
+        """Analyzes emotional trend."""
         if len(history) < 2:
-            return "estable"
+            return "stable"
         
         recent_emotions = []
         for state in history[-3:]:
@@ -411,16 +411,16 @@ class FeedbackHandler:
         
         if len(recent_emotions) >= 2:
             if recent_emotions[-1] > recent_emotions[0] + 0.3:
-                return "mejorando"
+                return "improving"
             elif recent_emotions[-1] < recent_emotions[0] - 0.3:
-                return "deteriorando"
+                return "deteriorating"
         
-        return "estable"
+        return "stable"
 
     def _analyze_attention_trend(self, history: List[Dict]) -> str:
-        """Analiza tendencia de atención."""
+        """Analyzes attention trend."""
         if len(history) < 2:
-            return "estable"
+            return "stable"
         
         engagement_scores = []
         for state in history[-3:]:
@@ -433,16 +433,16 @@ class FeedbackHandler:
             avg_earlier = np.mean(engagement_scores[:-1]) if len(engagement_scores) > 2 else engagement_scores[0]
             
             if avg_recent > avg_earlier + 0.3:
-                return "mejorando"
+                return "improving"
             elif avg_recent < avg_earlier - 0.3:
-                return "deteriorando"
+                return "deteriorating"
         
-        return "estable"
+        return "stable"
 
     def _analyze_posture_trend(self, history: List[Dict]) -> str:
-        """Analiza tendencia de postura."""
+        """Analyzes posture trend."""
         if len(history) < 2:
-            return "estable"
+            return "stable"
         
         posture_scores = []
         for state in history[-3:]:
@@ -452,55 +452,55 @@ class FeedbackHandler:
         
         if len(posture_scores) >= 2:
             if posture_scores[-1] > posture_scores[0] + 0.15:
-                return "mejorando"
+                return "improving"
             elif posture_scores[-1] < posture_scores[0] - 0.15:
-                return "deteriorando"
+                return "deteriorating"
         
-        return "estable"
+        return "stable"
 
     def _extract_recent_keywords(self) -> List[str]:
-        """Extrae palabras clave del feedback reciente para diversidad."""
+        """Extracts keywords from recent feedback for diversity."""
         keywords = []
-        for feedback_entry in self.feedback_history[-3:]:  # Últimos 3 feedbacks
+        for feedback_entry in self.feedback_history[-3:]:  # Last 3 feedbacks
             feedback_text = feedback_entry.get('feedback', '')
-            # Extraer palabras importantes (no artículos/preposiciones)
+            # Extract important words (not articles/prepositions)
             words = feedback_text.lower().split()
-            important_words = [w for w in words if len(w) > 3 and w not in ['para', 'with', 'your', 'that', 'this']]
+            important_words = [w for w in words if len(w) > 3 and w not in ['with', 'your', 'that', 'this', 'from']]
             keywords.extend(important_words)
         
         return keywords
 
     def _update_diversity_tracker(self, feedback: str) -> None:
-        """Actualiza el tracker de diversidad."""
+        """Updates the diversity tracker."""
         self.feedback_diversity_tracker.append({
             'feedback': feedback,
             'timestamp': time.time(),
             'words': feedback.lower().split()
         })
         
-        # Mantener solo los últimos 10 feedbacks
+        # Keep only the last 10 feedbacks
         if len(self.feedback_diversity_tracker) > 10:
             self.feedback_diversity_tracker.pop(0)
 
     def _get_contextual_fallback(self, context_data: Dict) -> str:
-        """Fallback contextual más inteligente."""
+        """Smarter contextual fallback."""
         current = context_data['current_state']
         
-        # Prioridades para fallback
+        # Priorities for fallback
         if 'gestural_communication' in current['interpretations']:
             if not current['interpretations']['gestural_communication']['face_accessibility']:
-                return "Destapa tu rostro para mejor comunicación"
+                return "Uncover your face for better communication"
         
         if 'attention_quality' in current['interpretations']:
             if current['interpretations']['attention_quality']['overall_engagement'] == 'disengaged':
-                return "Mejora tu contacto visual y atención"
+                return "Improve your eye contact and attention"
         
         if 'physical_presence' in current['interpretations']:
             quality = current['interpretations']['physical_presence']['posture_quality']
             if quality == 'poor':
-                return "Endereza tu postura y mantente erguido"
+                return "Straighten your posture and stay upright"
         
-        return "Mantén el enfoque y la presencia profesional"
+        return "Maintain focus and professional presence"
 
     def _wrap_text(self, text: str, font, scale: float, thickness: int, max_width: int) -> List[str]:
         words = text.split()
@@ -617,7 +617,3 @@ class FeedbackHandler:
             frame = cv2.addWeighted(frame, 1, fade_overlay, fade_alpha * 0.3, 0)
             
         return frame
-        
-    def get_feedback_history(self) -> List[Dict]:
-        """Get feedback history."""
-        return self.feedback_history.copy()

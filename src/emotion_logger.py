@@ -152,7 +152,7 @@ class EmotionLogger:
             
             # Iris Position Values
             iris_pos = iris_info['iris_position']
-            print(f"\n 👀IRIS POSITION (normalized -1 to +1):")
+            print(f"\n IRIS POSITION (normalized -1 to +1):")
             print(f"  Left Iris:")
             print(f"    Horizontal Offset: {iris_pos['left_iris_horizontal_offset']:+.4f} ({'Right' if iris_pos['left_iris_horizontal_offset'] > 0 else 'Left' if iris_pos['left_iris_horizontal_offset'] < 0 else 'Center'})")
             print(f"    Vertical Offset:   {iris_pos['left_iris_vertical_offset']:+.4f} ({'Down' if iris_pos['left_iris_vertical_offset'] > 0 else 'Up' if iris_pos['left_iris_vertical_offset'] < 0 else 'Center'})")

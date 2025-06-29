@@ -2,8 +2,7 @@ import cv2
 import numpy as np
 import mediapipe as mp
 import torch
-import time
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Optional, Tuple
 from collections import deque
 
 
@@ -55,13 +54,7 @@ class IrisHandler:
         self.total_blinks = 0
         self.frames_since_last_blink = 0
         self.consecutive_closed_frames = 0
-        
-        # GPU optimization for calculations if available
-        self.use_gpu = device.startswith('cuda') and torch.cuda.is_available()
-        if self.use_gpu:
-            self.gpu_device = torch.device(device)
-        
-        print(f"IrisHandler initialized on device: {device}")
+
         print("Eye tracking enabled - returning raw values")
         
     def calculate_eye_aspect_ratio(self, eye_landmarks: np.ndarray) -> float:

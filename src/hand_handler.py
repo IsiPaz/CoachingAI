@@ -666,7 +666,6 @@ class HandHandler:
             finger_spread = self.calculate_finger_spread(landmarks_array)
             velocity = self.calculate_hand_velocity(hand_center[:2], hand_label)
             
-            # *** AQUÍ VAS A AGREGAR EL CÓDIGO DEL HAND_STATE ***
             # Determine hand state
             hand_state = "unknown"
             if openness > 0.7:
@@ -675,7 +674,6 @@ class HandHandler:
                 hand_state = "closed"
             else:
                 hand_state = "partial"
-            # *** FIN DEL CÓDIGO AGREGADO ***
             
             # Detect specific gestures
             gestures_detected = {
@@ -721,7 +719,7 @@ class HandHandler:
                 'hand_center': hand_center.tolist(),
                 'is_dominant': idx == 0,  # First detected hand is usually dominant
                 'hands_in_frame': True,
-                'hand_state': hand_state,  # *** AGREGAR ESTA LÍNEA AQUÍ ***
+                'hand_state': hand_state,
             }
             
             # Add to history
