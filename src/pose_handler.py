@@ -326,6 +326,9 @@ class PoseHandler:
         """
         vis_frame = frame.copy()
         
+        if not debug or pose_info is None or not pose_info.get('pose_detected', False):
+            return vis_frame
+
         # Only draw if debug is enabled
         if debug and pose_info['pose_detected']:
             # Draw ONLY upper body landmarks and connections (exclude face and legs)

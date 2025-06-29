@@ -185,10 +185,11 @@ class VideoStream:
                 current_time = time.perf_counter()
                 self.fps_tracker['capture'] = 10 / (current_time - last_time)
                 last_time = current_time
-                
+
+
     def _process_loop(self) -> None:
         """GPU-optimized processing thread."""
-        frame_count = 0
+        frame_count = 0  # KEEP - used for FPS and GPU sync
         last_time = time.perf_counter()
         
         while self.running:
@@ -196,15 +197,15 @@ class VideoStream:
             frame = None
             with self.frame_lock:
                 if self.current_frame is not None:
-                    frame = self.current_frame.copy()  # Hacer copia para processing
+                    frame = self.current_frame.copy()
                     
             if frame is None:
-                time.sleep(0.01)  # Short sleep if no frame
+                time.sleep(0.01)
                 continue
                 
             process_start = time.perf_counter()
             
-            # MEJORA: Reutilizar buffer RGB
+            # IMPROVEMENT: Reuse RGB buffer
             if self.rgb_buffer is None or self.rgb_buffer.shape != frame.shape:
                 self.rgb_buffer = np.empty_like(frame)
                 
@@ -216,8 +217,25 @@ class VideoStream:
             
             # Update results atomically
             with self.results_lock:
-                for key, value in results.items():
-                    if value is not None:
+                # NEW: Check if person left the scene completely
+                person_in_scene = (
+                    results.get('face_bbox') is not None or 
+                    (results.get('hand_info') and results['hand_info'].get('hands_detected', False))
+                )
+                
+                if not person_in_scene:
+                    # Clear ALL results when no person detected
+                    self.latest_results = {
+                        'face_bbox': None,
+                        'emotion_info': None,
+                        'iris_info': None,
+                        'pose_info': None,
+                        'distance_info': None,
+                        'hand_info': None
+                    }
+                else:
+                    # Update normally
+                    for key, value in results.items():
                         self.latest_results[key] = value
                         
             # Send to feedback handler
@@ -243,16 +261,18 @@ class VideoStream:
             process_time = time.perf_counter() - process_start
             self.process_times.append(process_time)
             
+            # IMPORTANT: KEEP frame_count and its logic
             frame_count += 1
             if frame_count % 10 == 0:
                 current_time = time.perf_counter()
                 self.fps_tracker['process'] = 10 / (current_time - last_time)
                 last_time = current_time
                 
-            # GPU sync periodically
+            # GPU sync periodically - IMPORTANT TO KEEP
             if self.gpu_available and frame_count % 30 == 0:
                 torch.cuda.synchronize(self.device)
-                
+
+
     def _process_frame_gpu(self, frame_bgr: np.ndarray, frame_rgb: np.ndarray) -> Dict[str, Any]:
         """Process frame with GPU optimization."""
         results = {}
@@ -314,6 +334,7 @@ class VideoStream:
         # Main display loop
         self._display_loop()
         
+
     def _display_loop(self) -> None:
         """Main display loop running at target FPS."""
         frame_count = 0
@@ -323,48 +344,56 @@ class VideoStream:
             while self.running:
                 loop_start = time.perf_counter()
                 
-                # MEJORA: Get frame for display (copia separada)
+                # Get frame for display (separate copy)
                 frame = None
                 with self.frame_lock:
                     if self.current_frame is not None:
-                        frame = self.current_frame.copy()  # Copia dedicada para display
+                        frame = self.current_frame.copy()  # Dedicated copy for display
                         
                 if frame is None:
                     time.sleep(0.01)
                     continue
                     
-                # MEJORA: Trabajar en la copia, nunca modificar original
-                self.display_frame = frame  # No copy, frame ya es una copia
+                # Work on copy, never modify original
+                self.display_frame = frame  # No copy needed, frame is already a copy
                     
                 # Get latest results
                 with self.results_lock:
                     results = self.latest_results.copy()
                     
-                # Apply visualizations EN LA COPIA DE DISPLAY
-                if results['iris_info'] is not None:
-                    self.display_frame = self.iris_handler.draw_iris_visualization(
-                        self.display_frame, results['iris_info'], self.logger.debug
-                    )
-                    
-                if results['pose_info'] is not None:
-                    self.display_frame = self.pose_handler.draw_pose_visualization(
-                        self.display_frame, results['pose_info'], self.logger.debug
-                    )
-                    
-                if results['hand_info'] is not None:
-                    self.display_frame = self.hand_handler.draw_hand_visualization(
-                        self.display_frame, results['hand_info'], self.logger.debug
-                    )
-                    
-                # Main visualization
+                # NEW: Verify result validity before drawing
+                # If no face or hands detected, don't draw anything
+                has_detection = (
+                    results.get('face_bbox') is not None or 
+                    (results.get('hand_info') and results['hand_info'].get('hands_detected', False))
+                )
+                
+                if has_detection:
+                    # Apply visualizations only if there's something detected
+                    if results['iris_info'] is not None:
+                        self.display_frame = self.iris_handler.draw_iris_visualization(
+                            self.display_frame, results['iris_info'], self.logger.debug
+                        )
+                        
+                    if results['pose_info'] is not None:
+                        self.display_frame = self.pose_handler.draw_pose_visualization(
+                            self.display_frame, results['pose_info'], self.logger.debug
+                        )
+                        
+                    if results['hand_info'] is not None:
+                        self.display_frame = self.hand_handler.draw_hand_visualization(
+                            self.display_frame, results['hand_info'], self.logger.debug
+                        )
+                
+                # Main visualization (always execute to show clean frame)
                 self.display_frame = self.logger.create_visualization(
                     self.display_frame,
-                    results['face_bbox'],
-                    results['emotion_info'],
-                    results['iris_info'],
-                    results['distance_info'],
-                    results['pose_info'],
-                    results['hand_info']
+                    results['face_bbox'] if has_detection else None,
+                    results['emotion_info'] if has_detection else None,
+                    results['iris_info'] if has_detection else None,
+                    results['distance_info'] if has_detection else None,
+                    results['pose_info'] if has_detection else None,
+                    results['hand_info'] if has_detection else None
                 )
                 
                 # Feedback overlay
@@ -429,6 +458,7 @@ class VideoStream:
             print("\nInterrupted by user")
         finally:
             self.stop()
+
             
     def _draw_performance_overlay(self, frame: np.ndarray) -> None:
         """Draw performance statistics overlay."""

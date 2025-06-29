@@ -374,6 +374,7 @@ class EmotionLogger:
         
         return circumplex
         
+
     def create_visualization(self, 
                             frame_bgr: np.ndarray,
                             face_bbox: Optional[np.ndarray] = None,
@@ -382,7 +383,6 @@ class EmotionLogger:
                             distance_info: Optional[Dict] = None,
                             pose_info: Optional[Dict] = None,
                             hand_info: Optional[Dict] = None) -> np.ndarray:
-
         """
         Create the final visualization with emotion, iris, distance, and hand information.
         
@@ -400,24 +400,25 @@ class EmotionLogger:
         """
         vis_frame = frame_bgr.copy()
         
+        # Draw face detection results
         if face_bbox is not None and emotion_info is not None:
             # Draw face bounding box
             cv2.rectangle(vis_frame, 
-                         (face_bbox[0], face_bbox[1]), 
-                         (face_bbox[2], face_bbox[3]), 
-                         (0, 255, 0), 3)
+                        (face_bbox[0], face_bbox[1]), 
+                        (face_bbox[2], face_bbox[3]), 
+                        (0, 255, 0), 3)
             
             # Draw emotion text
             emotion_text = f"{emotion_info['predicted_emotion']}: {emotion_info['confidence']:.2f}"
             cv2.putText(vis_frame, emotion_text,
-                       (face_bbox[0], face_bbox[1] - 10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                    (face_bbox[0], face_bbox[1] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             
             # Draw valence/arousal info
             va_text = f"V: {emotion_info['valence']:.2f}, A: {emotion_info['arousal']:.2f}"
             cv2.putText(vis_frame, va_text,
-                       (face_bbox[0], face_bbox[3] + 25),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                    (face_bbox[0], face_bbox[3] + 25),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
             
             # Create circumplex visualization (only if option enabled)
             if self.show_circumplex:
@@ -438,8 +439,12 @@ class EmotionLogger:
                 vis_frame[y_offset:y_offset+overlay_size, x_offset:x_offset+overlay_size] = blended
         
         # Draw distance information if available
-        if distance_info is not None:
-            distance_text = f"Distance: {distance_info['distance_cm']:.0f}cm - {distance_info['distance_status']}"
+        if distance_info is not None and isinstance(distance_info, dict):
+            distance_cm = distance_info.get('distance_cm', 0)
+            distance_status = distance_info.get('distance_status', 'Unknown')
+            status_color = distance_info.get('status_color', (255, 255, 255))
+            
+            distance_text = f"Distance: {distance_cm:.0f}cm - {distance_status}"
             font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
             (text_w, text_h), _ = cv2.getTextSize(distance_text, font, scale, thickness)
             x, y = 10, 25
@@ -447,89 +452,100 @@ class EmotionLogger:
             # Draw white background rectangle
             cv2.rectangle(vis_frame, (x - 5, y - text_h - 5), (x + text_w + 5, y + 5), (255, 255, 255), -1)
             # Draw colored text on top
-            cv2.putText(vis_frame, distance_text, (x, y), font, scale, distance_info['status_color'], thickness)
-
+            cv2.putText(vis_frame, distance_text, (x, y), font, scale, status_color, thickness)
                     
-        # Draw iris information if available
-        if iris_info is not None:           
-            # Draw blink count
-            blink_text = f"Blinks: {iris_info['total_blinks']}"
+        # Draw iris information if available - FIXED SECTION
+        if iris_info is not None and isinstance(iris_info, dict):           
+            # Draw blink count with safety check
+            total_blinks = iris_info.get('total_blinks', 0)
+            blink_text = f"Blinks: {total_blinks}"
             f, s, t = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
             (w, h), _ = cv2.getTextSize(blink_text, f, s, t)
             org = (10, 70 + h)
             cv2.rectangle(vis_frame, (org[0]-5, org[1]-h-5), (org[0]+w+5, org[1]+5), (255,255,255), -1)
             cv2.putText(vis_frame, blink_text, org, f, s, (0,0,0), t)
                     
-        # Draw hand information if available
+        # Draw hand interference warning if sustained
         x, y = 10, vis_frame.shape[0] - 307 + 18
 
-        if hand_info and hand_info.get('face_interference', {}).get('sustained_interference', False):
-            interference = hand_info['face_interference']
-            alert_text = "FACE COVERED"
-            duration_text = f"Duration: {interference['duration']:.1f}s"
-            font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+        if hand_info and isinstance(hand_info, dict):
+            face_interference = hand_info.get('face_interference', {})
+            if isinstance(face_interference, dict) and face_interference.get('sustained_interference', False):
+                duration = face_interference.get('duration', 0.0)
+                alert_text = "FACE COVERED"
+                duration_text = f"Duration: {duration:.1f}s"
+                font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
 
-            (alert_w, alert_h), alert_bl = cv2.getTextSize(alert_text, font, scale, thickness)
-            (dur_w, dur_h), dur_bl = cv2.getTextSize(duration_text, font, scale, thickness)
+                (alert_w, alert_h), alert_bl = cv2.getTextSize(alert_text, font, scale, thickness)
+                (dur_w, dur_h), dur_bl = cv2.getTextSize(duration_text, font, scale, thickness)
 
-            bg_w = max(alert_w, dur_w) + 10
-            bg_h = alert_h + alert_bl + dur_h + dur_bl + 15
+                bg_w = max(alert_w, dur_w) + 10
+                bg_h = alert_h + alert_bl + dur_h + dur_bl + 15
 
-            cv2.rectangle(vis_frame, 
-                        (x - 5, y - bg_h + dur_bl), 
-                        (x - 5 + bg_w, y + dur_bl + 5), 
-                        (255, 255, 255), cv2.FILLED)
+                cv2.rectangle(vis_frame, 
+                            (x - 5, y - bg_h + dur_bl), 
+                            (x - 5 + bg_w, y + dur_bl + 5), 
+                            (255, 255, 255), cv2.FILLED)
 
-            cv2.putText(vis_frame, alert_text, (x, y - dur_h - 5), font, scale, (0, 0, 255), thickness)
-            cv2.putText(vis_frame, duration_text, (x, y), font, scale, (0, 0, 255), thickness)
+                cv2.putText(vis_frame, alert_text, (x, y - dur_h - 5), font, scale, (0, 0, 255), thickness)
+                cv2.putText(vis_frame, duration_text, (x, y), font, scale, (0, 0, 255), thickness)
 
+        # Draw pose information in debug mode - FIXED SECTION
+        if self.debug and pose_info is not None and isinstance(pose_info, dict):
+            posture_metrics = pose_info.get('posture_metrics', {})
+            if isinstance(posture_metrics, dict):
+                orientation = posture_metrics.get("orientation", "Unknown")
+                f, s, t = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+                
+                # Calculate position safely
+                if iris_info is not None and isinstance(iris_info, dict):
+                    total_blinks = iris_info.get('total_blinks', 0)
+                    blink_h = cv2.getTextSize(f"Blinks: {total_blinks}", f, s, t)[0][1]
+                else:
+                    blink_h = cv2.getTextSize("Blinks: 0", f, s, t)[0][1]
+                    
+                org = (10, 70 + blink_h + 15 + blink_h) 
 
-        if self.debug and pose_info is not None:
-            orientation = pose_info['posture_metrics'].get("orientation", "Unknown")
-            f, s, t = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
-            blink_h = cv2.getTextSize(f"Blinks: {iris_info['total_blinks']}", f, s, t)[0][1]
-            org = (10, 70 + blink_h + 15 + blink_h) 
+                # Force color: green if frontal, else red (any other case)
+                color = (0, 255, 0) if orientation.lower() == "frontal" else (0, 0, 255)
 
-            # Force color: green if frontal, else red (any other case)
-            color = (0, 255, 0) if orientation.lower() == "frontal" else (0, 0, 255)
+                (w, h), _ = cv2.getTextSize(f"Orientation: {orientation}", f, s, t)
+                cv2.rectangle(vis_frame, (org[0]-5, org[1]-h-5), (org[0]+w+5, org[1]+5), (255,255,255), -1)
+                cv2.putText(vis_frame, f"Orientation: {orientation}", org, f, s, color, t)
 
-            (w, h), _ = cv2.getTextSize(f"Orientation: {orientation}", f, s, t)
-            cv2.rectangle(vis_frame, (org[0]-5, org[1]-h-5), (org[0]+w+5, org[1]+5), (255,255,255), -1)
-            cv2.putText(vis_frame, f"Orientation: {orientation}", org, f, s, color, t)
+                # Draw shoulder symmetry status
+                shoulder_status = posture_metrics.get('shoulder_symmetry_status', 'Unknown')
+                shoulder_text = f"Shoulder Sym: {shoulder_status}"
+                
+                # Use the same font variables already defined
+                font = f  # cv2.FONT_HERSHEY_SIMPLEX
+                scale = s  # 0.6
+                thickness = t  # 2
+                
+                # Get text size
+                (text_w, text_h), _ = cv2.getTextSize(shoulder_text, font, scale, thickness)
+                
+                # Position - below orientation text
+                x_pos = 10
+                y_pos = org[1] + h + 16  # Position below orientation with some spacing
+                
+                # Draw white background
+                cv2.rectangle(vis_frame, 
+                            (x_pos - 5, y_pos - text_h - 5), 
+                            (x_pos + text_w + 5, y_pos + 5), 
+                            (255, 255, 255), -1)
+                
+                # Set color based on status
+                text_color = (0, 255, 0) if shoulder_status == "Correct" else (0, 0, 255)
+                
+                # Draw text
+                cv2.putText(vis_frame, shoulder_text, (x_pos, y_pos), 
+                        font, scale, text_color, thickness)
 
-            # Shoulders
-            shoulder_status = pose_info['posture_metrics'].get('shoulder_symmetry_status', 'Unknown')
-            shoulder_text = f"Shoulder Sym: {shoulder_status}"
-            
-            # Use the same font variables already defined
-            font = f  # cv2.FONT_HERSHEY_SIMPLEX
-            scale = s  # 0.6
-            thickness = t  # 2
-            
-            # Get text size
-            (text_w, text_h), _ = cv2.getTextSize(shoulder_text, font, scale, thickness)
-            
-            # Position - below orientation text
-            x_pos = 10
-            y_pos = org[1] + h + 16  # Position below orientation with some spacing
-            
-            # Draw white background
-            cv2.rectangle(vis_frame, 
-                        (x_pos - 5, y_pos - text_h - 5), 
-                        (x_pos + text_w + 5, y_pos + 5), 
-                        (255, 255, 255), -1)
-            
-            # Set color based on status
-            text_color = (0, 255, 0) if shoulder_status == "Correct" else (0, 0, 255)
-            
-            # Draw text
-            cv2.putText(vis_frame, shoulder_text, (x_pos, y_pos), 
-                    font, scale, text_color, thickness)
-
-
-        # Position below orientation if debug, else use fixed position
-        if self.debug and iris_info is not None:
-            blink_h = cv2.getTextSize(f"Blinks: {iris_info['total_blinks']}", cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0][1]
+        # Position calculation for additional info - FIXED
+        if self.debug and iris_info is not None and isinstance(iris_info, dict):
+            total_blinks = iris_info.get('total_blinks', 0)
+            blink_h = cv2.getTextSize(f"Blinks: {total_blinks}", cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0][1]
             y_pos = 100 + 15 + blink_h + 17 + blink_h + 35  # Below orientation
         else:
             y_pos = 150  # Fixed position
@@ -539,14 +555,14 @@ class EmotionLogger:
         scale = 0.6
         thickness = 2
 
-        # Add debug indicator
+        # Add debug mode indicator
         if self.debug:
-            text = "DEBUG MODE"; f, s, t = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+            text = "DEBUG MODE"
+            f, s, t = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
             (w, h), _ = cv2.getTextSize(text, f, s, t)
             org = (vis_frame.shape[1] - w - 10, 10 + h)
             cv2.rectangle(vis_frame, (org[0]-5, org[1]-h-5), (org[0]+w+5, org[1]+5), (255,255,255), -1)
             cv2.putText(vis_frame, text, org, f, s, (255,0,0), t)
-
         
         return vis_frame
         
