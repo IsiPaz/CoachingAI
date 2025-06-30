@@ -26,6 +26,7 @@ class VideoStream:
                  logger: EmotionLogger,
                  camera_id: int = 0,
                  target_fps: int = 10,
+                 show_fps: bool = False,
                  openai_api_key: Optional[str] = None):
         """
         Initialize GPU-optimized video stream for 10 FPS target.
@@ -42,6 +43,7 @@ class VideoStream:
         self.camera_id = camera_id
         self.target_fps = target_fps
         self.frame_time = 1.0 / target_fps  # 100ms per frame at 10 FPS
+        self.show_fps = show_fps
         
         # Device configuration
         self.device = emonet_handler.device
@@ -101,7 +103,7 @@ class VideoStream:
         self.last_fps_update = time.perf_counter()
         self.process_times = deque(maxlen=30)
         
-        # Display buffer - SEPARADO del processing
+        # Display 
         self.display_frame = None
         
         # Camera setup
@@ -401,7 +403,7 @@ class VideoStream:
                     self.display_frame = self.feedback_handler.draw_feedback(self.display_frame)
                     
                 # Performance overlay in debug mode
-                if self.logger.debug:
+                if self.show_fps:
                     self._draw_performance_overlay(self.display_frame)
                     
                 # Display frame
