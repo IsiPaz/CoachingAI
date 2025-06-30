@@ -2,8 +2,7 @@ import cv2
 import numpy as np
 import mediapipe as mp
 import torch
-import time
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Optional, Tuple
 from collections import deque
 
 
@@ -55,13 +54,7 @@ class IrisHandler:
         self.total_blinks = 0
         self.frames_since_last_blink = 0
         self.consecutive_closed_frames = 0
-        
-        # GPU optimization for calculations if available
-        self.use_gpu = device.startswith('cuda') and torch.cuda.is_available()
-        if self.use_gpu:
-            self.gpu_device = torch.device(device)
-        
-        print(f"IrisHandler initialized on device: {device}")
+
         print("Eye tracking enabled - returning raw values")
         
     def calculate_eye_aspect_ratio(self, eye_landmarks: np.ndarray) -> float:
@@ -341,9 +334,9 @@ class IrisHandler:
         }
         
     def draw_iris_visualization(self, 
-                              frame: np.ndarray, 
-                              iris_info: Dict,
-                              debug: bool = False) -> np.ndarray:
+                            frame: np.ndarray, 
+                            iris_info: Dict,
+                            debug: bool = False) -> np.ndarray:
         """
         Draw iris tracking visualization on frame.
         
@@ -357,28 +350,55 @@ class IrisHandler:
         """
         vis_frame = frame.copy()
         
-        # Solo dibujar si debug está activado
-        if debug:
-            # Draw eye landmarks
-            for landmark in iris_info["left_eye_landmarks"]:
-                cv2.circle(vis_frame, tuple(landmark), 2, (0, 255, 0), -1)
-            for landmark in iris_info["right_eye_landmarks"]:
-                cv2.circle(vis_frame, tuple(landmark), 2, (0, 255, 0), -1)
+        # Safety checks - return clean frame if no valid data
+        if not debug or iris_info is None or not isinstance(iris_info, dict):
+            return vis_frame
+        
+        try:
+            # Draw eye landmarks if they exist
+            left_eye_landmarks = iris_info.get("left_eye_landmarks")
+            right_eye_landmarks = iris_info.get("right_eye_landmarks")
             
-            # Solo dibujar iris centers si los ojos están abiertos
-            if not iris_info["eyes_closed"]:
-                if iris_info["left_iris_position"] is not None:
-                    cv2.circle(vis_frame, tuple(iris_info["left_iris_position"]), 4, (255, 0, 0), -1)
-                if iris_info["right_iris_position"] is not None:
-                    cv2.circle(vis_frame, tuple(iris_info["right_iris_position"]), 4, (255, 0, 0), -1)
-            # Eyes text
-            status_text = f"Eyes: {'CLOSED' if iris_info['eyes_closed'] else 'OPEN'}"
-            org = (10, 97)
+            if left_eye_landmarks is not None:
+                for landmark in left_eye_landmarks:
+                    cv2.circle(vis_frame, tuple(landmark), 2, (0, 255, 0), -1)
+                    
+            if right_eye_landmarks is not None:
+                for landmark in right_eye_landmarks:
+                    cv2.circle(vis_frame, tuple(landmark), 2, (0, 255, 0), -1)
+            
+            # Only draw iris centers if eyes are open
+            eyes_closed = iris_info.get("eyes_closed", False)
+            
+            if not eyes_closed:
+                left_iris_pos = iris_info.get("left_iris_position")
+                right_iris_pos = iris_info.get("right_iris_position")
+                
+                if left_iris_pos is not None:
+                    cv2.circle(vis_frame, tuple(left_iris_pos), 4, (255, 0, 0), -1)
+                    
+                if right_iris_pos is not None:
+                    cv2.circle(vis_frame, tuple(right_iris_pos), 4, (255, 0, 0), -1)
+            
+            # Eyes status text
+            text = f"Eyes: {'CLOSED' if eyes_closed else 'Open'}"
             font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
-            color = (0, 0, 255) if iris_info['eyes_closed'] else (0, 255, 0)
-            (text_w, text_h), _ = cv2.getTextSize(status_text, font, scale, thickness)
-            cv2.rectangle(vis_frame, (org[0] - 5, org[1] - text_h - 5), (org[0] + text_w + 5, org[1] + 5), (255, 255, 255), -1)
-            cv2.putText(vis_frame, status_text, org, font, scale, color, thickness)
-
+            color = (0, 0, 255) if eyes_closed else (0, 255, 0)
+            org = (10, 55)
+            
+            # Draw background rectangle for text
+            (text_w, text_h), _ = cv2.getTextSize(text, font, scale, thickness)
+            cv2.rectangle(vis_frame, 
+                        (org[0]-5, org[1]-text_h-5), 
+                        (org[0]+text_w+5, org[1]+5), 
+                        (255, 255, 255), -1)
+            
+            # Draw text
+            cv2.putText(vis_frame, text, org, font, scale, color, thickness)
+            
+        except Exception as e:
+            # If any error occurs during drawing, just return the frame
+            print(f"Warning: Error drawing iris visualization: {e}")
+            return vis_frame
             
         return vis_frame

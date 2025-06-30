@@ -12,7 +12,6 @@ class PoseHandler:
     Handles body pose tracking and posture analysis using MediaPipe Pose.
     Returns comprehensive posture metrics including trunk inclination, 
     shoulder symmetry, and head orientation.
-    GPU-optimized where possible.
     """
     
     def __init__(self, 
@@ -61,39 +60,8 @@ class PoseHandler:
         
         # History tracking for smoothing
         self.posture_history = deque(maxlen=history_window_size)
-        
-        # GPU optimization for calculations if available
-        self.use_gpu = device.startswith('cuda') and torch.cuda.is_available()
-        if self.use_gpu:
-            self.gpu_device = torch.device(device)
-        
-        print(f"PoseHandler initialized on device: {device}")
+    
         print("Pose tracking enabled - analyzing posture metrics")
-        
-    def calculate_angle(self, point1: np.ndarray, point2: np.ndarray, point3: np.ndarray) -> float:
-        """
-        Calculate angle between three points in degrees.
-        
-        Args:
-            point1: First point (x, y)
-            point2: Middle point (vertex of angle)
-            point3: Third point (x, y)
-            
-        Returns:
-            Angle in degrees
-        """
-        # Vector from point2 to point1
-        v1 = point1 - point2
-        # Vector from point2 to point3
-        v2 = point3 - point2
-        
-        # Calculate angle using dot product
-        cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-        cos_angle = np.clip(cos_angle, -1.0, 1.0)  # Prevent numerical errors
-        angle_rad = np.arccos(cos_angle)
-        angle_deg = np.degrees(angle_rad)
-        
-        return angle_deg
     
     def calculate_trunk_inclination(self, landmarks: np.ndarray) -> Tuple[float, float]:
         """
@@ -326,6 +294,9 @@ class PoseHandler:
         """
         vis_frame = frame.copy()
         
+        if not debug or pose_info is None or not pose_info.get('pose_detected', False):
+            return vis_frame
+
         # Only draw if debug is enabled
         if debug and pose_info['pose_detected']:
             # Draw ONLY upper body landmarks and connections (exclude face and legs)

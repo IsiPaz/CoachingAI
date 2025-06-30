@@ -1,4 +1,3 @@
-import cv2
 import numpy as np
 import torch
 from typing import Dict, Optional, Tuple
@@ -29,7 +28,7 @@ class DistanceHandler:
         
         # Optimal distance thresholds (in cm)
         self.OPTIMAL_MIN_DISTANCE = 45  # 45cm
-        self.OPTIMAL_MAX_DISTANCE = 80  # 80cm
+        self.OPTIMAL_MAX_DISTANCE = 70  # 70cm
         self.TOO_CLOSE_THRESHOLD = 30   # 30cm
         self.TOO_FAR_THRESHOLD = 120    # 120cm
         
@@ -145,12 +144,12 @@ class DistanceHandler:
             Dictionary with status and recommendations
         """
         if distance_cm < self.TOO_CLOSE_THRESHOLD:
-            status = "TOO_CLOSE"
+            status = "Too close"
             recommendation = "Move back from camera"
             quality = "poor"
             color = (0, 0, 255)  # Red
         elif distance_cm > self.TOO_FAR_THRESHOLD:
-            status = "TOO_FAR"
+            status = "Too far"
             recommendation = "Move closer to camera"
             quality = "poor"
             color = (0, 0, 255)  # Red
@@ -162,10 +161,10 @@ class DistanceHandler:
         else:
             # Combine all other cases into poor quality (too close or too far)
             if distance_cm < self.OPTIMAL_MIN_DISTANCE:
-                status = "TOO_CLOSE"
+                status = "Too close"
                 recommendation = "Move back from camera"
             else:
-                status = "TOO_FAR"
+                status = "Too far"
                 recommendation = "Move closer to camera"
             quality = "poor"
             color = (0, 0, 255)  # Red

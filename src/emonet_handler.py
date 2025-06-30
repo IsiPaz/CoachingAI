@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from torch import nn
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, List
 
 from face_alignment.detection.sfd.sfd_detector import SFDDetector
 from emonet.models import EmoNet

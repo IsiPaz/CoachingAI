@@ -59,6 +59,7 @@ class RealtimeEmotionRecognizer:
             logger=self.logger,
             camera_id=camera_id,
             target_fps=target_fps,
+            show_fps=show_fps,
             openai_api_key=openai_api_key
         )
         

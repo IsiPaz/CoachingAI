@@ -666,7 +666,6 @@ class HandHandler:
             finger_spread = self.calculate_finger_spread(landmarks_array)
             velocity = self.calculate_hand_velocity(hand_center[:2], hand_label)
             
-            # *** AQUÍ VAS A AGREGAR EL CÓDIGO DEL HAND_STATE ***
             # Determine hand state
             hand_state = "unknown"
             if openness > 0.7:
@@ -675,7 +674,6 @@ class HandHandler:
                 hand_state = "closed"
             else:
                 hand_state = "partial"
-            # *** FIN DEL CÓDIGO AGREGADO ***
             
             # Detect specific gestures
             gestures_detected = {
@@ -721,7 +719,7 @@ class HandHandler:
                 'hand_center': hand_center.tolist(),
                 'is_dominant': idx == 0,  # First detected hand is usually dominant
                 'hands_in_frame': True,
-                'hand_state': hand_state,  # *** AGREGAR ESTA LÍNEA AQUÍ ***
+                'hand_state': hand_state,
             }
             
             # Add to history
@@ -745,9 +743,9 @@ class HandHandler:
         return hands_info
     
     def draw_hand_visualization(self, 
-                              frame: np.ndarray, 
-                              hand_info: Dict,
-                              debug: bool = False) -> np.ndarray:
+                            frame: np.ndarray, 
+                            hand_info: Dict,
+                            debug: bool = False) -> np.ndarray:
         """
         Draw hand tracking visualization on frame.
         
@@ -761,54 +759,85 @@ class HandHandler:
         """
         vis_frame = frame.copy()
         
-        if not hand_info['hands_detected']:
+        # Safety checks - return clean frame if no valid data
+        if hand_info is None or not isinstance(hand_info, dict):
+            return vis_frame
+            
+        if not hand_info.get('hands_detected', False):
             return vis_frame
         
+        # Additional safety check for required data
+        if 'hand_landmarks' not in hand_info or 'handedness' not in hand_info:
+            return vis_frame
         
         # Draw hand landmarks and connections
-        if debug and 'hand_landmarks' in hand_info:
-            for hand_landmarks, handedness in zip(hand_info['hand_landmarks'], 
-                                                 hand_info['handedness']):
-                # Draw hand skeleton
-                self.mp_drawing.draw_landmarks(
-                    vis_frame,
-                    hand_landmarks,
-                    self.mp_hands.HAND_CONNECTIONS,
-                    self.mp_drawing_styles.get_default_hand_landmarks_style(),
-                    self.mp_drawing_styles.get_default_hand_connections_style()
-                )
-                
-                # Get hand label
-                hand_label = handedness.classification[0].label
-                
-                # Draw hand label
-                if hand_label.lower() in hand_info['hand_metrics']:
-                    metrics = hand_info['hand_metrics'][hand_label.lower()]
+        if debug and hand_info['hand_landmarks'] is not None:
+            try:
+                for hand_landmarks, handedness in zip(hand_info['hand_landmarks'], 
+                                                    hand_info['handedness']):
+                    # Draw hand skeleton
+                    self.mp_drawing.draw_landmarks(
+                        vis_frame,
+                        hand_landmarks,
+                        self.mp_hands.HAND_CONNECTIONS,
+                        self.mp_drawing_styles.get_default_hand_landmarks_style(),
+                        self.mp_drawing_styles.get_default_hand_connections_style()
+                    )
                     
-                    # Find wrist position
-                    wrist_landmark = hand_landmarks.landmark[0]
-                    wrist_x = int(wrist_landmark.x * vis_frame.shape[1])
-                    wrist_y = int(wrist_landmark.y * vis_frame.shape[0])
+                    # Get hand label
+                    hand_label = handedness.classification[0].label
                     
-                    # Draw gesture info
-                    gesture_text = f"{hand_label}: {metrics['primary_gesture']}"
-                    cv2.putText(vis_frame, gesture_text,
-                               (wrist_x - 50, wrist_y + 30),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-                    
-                    # Draw openness indicator
-                    openness = metrics['openness']
-                    openness_color = (0, int(255 * openness), int(255 * (1 - openness)))
-                    cv2.putText(vis_frame, f"Open: {openness:.2f}",
-                               (wrist_x - 50, wrist_y + 50),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, openness_color, 2)
+                    # Draw hand label
+                    if hand_label.lower() in hand_info.get('hand_metrics', {}):
+                        metrics = hand_info['hand_metrics'][hand_label.lower()]
+                        
+                        # Find wrist position
+                        wrist_landmark = hand_landmarks.landmark[0]
+                        wrist_x = int(wrist_landmark.x * vis_frame.shape[1])
+                        wrist_y = int(wrist_landmark.y * vis_frame.shape[0])
+                        
+                        # Draw gesture info
+                        gesture_text = f"{hand_label}: {metrics.get('primary_gesture', 'none')}"
+                        cv2.putText(vis_frame, gesture_text,
+                                (wrist_x - 50, wrist_y + 30),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                        
+                        # Draw openness indicator
+                        openness = metrics.get('openness', 0.0)
+                        openness_color = (0, int(255 * openness), int(255 * (1 - openness)))
+                        cv2.putText(vis_frame, f"Open: {openness:.2f}",
+                                (wrist_x - 50, wrist_y + 50),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, openness_color, 2)
+            except Exception as e:
+                # If any error occurs during drawing, just return the frame
+                print(f"Warning: Error drawing hand visualization: {e}")
+                return vis_frame
         
-        # Draw face interference indicator
-        if hand_info['face_interference']['is_interfering'] and not hand_info['face_interference']['sustained_interference']:
-            # Yellow warning for temporary interference
-            interference_text = f"Face interference: {hand_info['face_interference']['interference_score']:.2f}"
-            cv2.putText(vis_frame, interference_text,
-                       (10, vis_frame.shape[0] - 40),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        # Face interference warning (only if valid data exists)
+        if (hand_info.get('face_interference', {}).get('is_interfering', False) and 
+            not hand_info.get('face_interference', {}).get('sustained_interference', False)):
+            
+            # Prepare text and style settings
+            interference_score = hand_info['face_interference'].get('interference_score', 0.0)
+            text = f"Face interference: {interference_score:.2f}"
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.6
+            text_color = (0, 140, 255)  # Orange (BGR)
+            bg_color = (255, 255, 255)  # White
+            thickness = 2
+            x, y = 10, vis_frame.shape[0] - 307
+
+            # Measure text size for background rectangle
+            (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+
+            # Draw white background rectangle slightly larger than the text
+            cv2.rectangle(vis_frame, 
+                        (x - 5, y - text_h - 5), 
+                        (x + text_w + 5, y + baseline + 5), 
+                        bg_color, 
+                        cv2.FILLED)
+
+            # Overlay the interference text
+            cv2.putText(vis_frame, text, (x, y), font, font_scale, text_color, thickness)
         
         return vis_frame
