@@ -96,8 +96,3 @@ This project builds upon the work of several open-source tools and research effo
 - **MediaPipe** — Real-time face, pose, hand, and iris tracking is powered by [MediaPipe](https://github.com/google-ai-edge/mediapipe), an open-source framework developed by Google for building cross-platform multimodal applied ML pipelines.
 
 Please cite these tools appropriately if you use this system in your own research or development.
-
-## Contact
-For questions, suggestions, or collaborations, please contact:
-- Nicolás Torres - [nicolas.torresr@usm.cl]
-- Isidora Ubilla — [isidora.ubilla17@gmail.com]
