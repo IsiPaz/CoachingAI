@@ -419,12 +419,6 @@ class VideoStream:
                 elif key == ord('d'):
                     self.logger.debug = not self.logger.debug
                     print(f"Debug mode: {'ON' if self.logger.debug else 'OFF'}")
-                elif key == ord('p'):
-                    self._print_performance_stats()
-                # Quick report preview
-                elif key == ord('r'):
-                    summary = self.report_handler.get_quick_summary()
-                    print(f"📊 Current session: {summary}")
                     
                 # Update counters
                 self.frame_counter += 1
@@ -512,12 +506,6 @@ class VideoStream:
                 
                 # Save raw session data for future analysis
                 self.report_handler.save_session_data()
-                
-                # Print quick summary to console
-                print("\n📊 SESSION SUMMARY:")
-                print("-" * 40)
-                summary = self.report_handler.get_quick_summary()
-                print(summary)
                 
                 # Show key highlights
                 analysis = self.report_handler.analyze_session()

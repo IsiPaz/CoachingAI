@@ -314,7 +314,7 @@ class FeedbackHandler:
     - Use natural, encouraging or corrective English.
     - Avoid jargon or technical terms.
     - Be concise but clear.
-    - Use no more than 14 words.
+    - Use no more than 14 words, strictly. Do not exceed this limit.
     - Do not wrap your answer in quotation marks.
 
     Examples:

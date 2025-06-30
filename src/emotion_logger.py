@@ -1,3 +1,4 @@
+import os
 import cv2
 import numpy as np
 import time
@@ -578,7 +579,9 @@ class EmotionLogger:
             Filename of saved screenshot
         """
         timestamp = int(time.time())
-        filename = f"emotion_screenshot_{timestamp}.jpg"
+        os.makedirs('screenshots', exist_ok=True)
+
+        filename = f"screenshots/emotion_screenshot_{timestamp}.jpg"
 
         # Save image only
         cv2.imwrite(filename, frame)
