@@ -6,6 +6,7 @@ This repository contains the official implementation of the paper:
 
 This project presents a real-time, vision-based coaching system designed for virtual interviews. It integrates multiple modalities of nonverbal behavior analysis and provides live feedback based on user behavior.
 
+![Texto alternativo](media/example.png)
 ---
 
 ## Technologies Used
@@ -46,7 +47,7 @@ To launch the real-time multimodal system using your webcam:
 
 ```bash
 cd src
-python main.py
+python main.py --show_fps --debug --openai_api_key YOUR_API_KEY
 ```
 
 ## Optional Command-Line Arguments
@@ -63,7 +64,17 @@ python main.py
 | `--debug`            | flag   | False    | Enable verbose output and detailed visual overlays                       |
 | `--openai_api_key`   | str    | None     | OpenAI API key to enable ChatGPT feedback                                |
 
-## Example Usage
+## Reports
+The reports are saved in the `src/reports/` folder.
+
+## Keyboard Controls
+During execution, the system supports the following keyboard inputs for quick interaction and debugging:
+
+| Key | Action                  | Description                                                                 |
+|-----|-------------------------|-----------------------------------------------------------------------------|
+| `q` | Quit                    | Stops the session and closes all windows.                                  |
+| `s` | Save screenshot         | Saves a snapshot of the current frame with all overlays (e.g., annotations, landmarks). |
+| `d` | Toggle debug mode       | Turns debug mode ON/OFF. Displays additional visual and textual information useful for development and analysis. |
 
 ## Credits and Acknowledgments
 
